@@ -1,6 +1,8 @@
 """Authenticated dashboard and review API for one company's portfolio."""
 import logging
 import os
+import time
+from threading import Lock
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -20,11 +22,16 @@ from supabase_auth.errors import AuthApiError
 from deviation_logic import analyze
 from dashboard_logic import bill_detail, monthly, period_overlaps, select_rows, totals, year_comparison
 from workflow import (ReviewUpdate, investigation_detail, persist_analysis,
-                      require_role, review_queue, rpc)
+                      require_role, review_queue, rpc, read_all)
+from import_workflow import (UploadRequest, ActivateRequest, MatchRequest, stage_upload,
+                             public_preview, activate_import)
+from insights import generate_insights
 
 load_dotenv(Path(__file__).with_name('.env'))
-app = FastAPI(title='Utility Dashboard API', version='0.4.1')
+app = FastAPI(title='Utility Dashboard API', version='0.5.0')
 logger = logging.getLogger('utility_api')
+_dataset_cache = {}
+_dataset_cache_lock = Lock()
 bearer = HTTPBearer(auto_error=False)
 origins = [x.strip().rstrip('/') for x in os.getenv('ALLOWED_ORIGINS', '').split(',') if x.strip()]
 if '*' in origins:
@@ -35,6 +42,15 @@ app.add_middleware(CORSMiddleware, allow_origins=origins, allow_credentials=Fals
 
 @app.middleware('http')
 async def no_private_cache(request: Request, call_next):
+    if request.method == 'POST' and request.url.path == '/api/v1/imports/preview':
+        length = request.headers.get('content-length')
+        if length is None:
+            return JSONResponse(status_code=411, content={'detail': 'Upload request must include Content-Length.'})
+        try:
+            if int(length) > 7 * 1024 * 1024:
+                return JSONResponse(status_code=413, content={'detail': 'Upload exceeds the 5 MB workbook limit.'})
+        except ValueError:
+            return JSONResponse(status_code=400, content={'detail': 'Invalid upload length.'})
     response = await call_next(request)
     if request.url.path.startswith('/api/'):
         response.headers['Cache-Control'] = 'no-store'
@@ -83,16 +99,23 @@ def require_member(credentials: Annotated[HTTPAuthorizationCredentials | None, D
 
 
 def get_dataset(member=Depends(require_member), db=Depends(get_db)):
-    imports = (db.table('imports').select('id,filename,activated_at,source_exported_at,validation_report')
+    imports = (db.table('imports').select('id,filename,activated_at,source_exported_at,validation_report,scope')
                .eq('status', 'active').limit(2).execute().data)
     if len(imports) != 1:
         raise HTTPException(409, 'Exactly one active dataset is required.')
     active = imports[0]
+    # Authorization is still checked on every request. The company-wide immutable
+    # snapshot cache only avoids refetching every ledger page for each widget.
+    with _dataset_cache_lock:
+        cached = _dataset_cache.get(active['id'])
+        if cached and time.monotonic() - cached[0] < 120:
+            return active, cached[1]
     rows, offset = [], 0
     # Pin the import ID throughout pagination, even if another import is activated.
     columns = ('id,bill_id,due_date,paid_date,category,transaction_type,paid_amount,unpaid_amount,'
                'description,reading_type,service_start,service_end,duration_days,period_status,'
-               'period_evidence,quality_issues,import_rows!inner(sheet_name,row_number),'
+               'period_evidence,quality_issues,payment_reference,gl_account,usage_value,usage_unit,match_evidence,'
+               'import_rows!inner(sheet_name,row_number),'
                'bills!inner(utility_accounts!inner(id,account_number,property_id,properties!inner(name)))')
     while True:
         page = (db.table('bill_versions').select(columns).eq('import_id', active['id'])
@@ -105,10 +128,14 @@ def get_dataset(member=Depends(require_member), db=Depends(get_db)):
             r['account_number'] = account['account_number']
             source = r.pop('import_rows')
             r['source_sheet'], r['source_row'] = source['sheet_name'], source['row_number']
+            r['source_filename'] = active['filename']
             rows.append(r)
         if len(page) < 500:
             break
         offset += 500
+    with _dataset_cache_lock:
+        _dataset_cache.clear()
+        _dataset_cache[active['id']] = (time.monotonic(), rows)
     return active, rows
 
 
@@ -143,7 +170,7 @@ def metadata(active, filters=None):
     report = active.get('validation_report') or {}
     differences = [{
         'scope': r['scope'],
-        'difference_cents': r['difference_paid_cents'] + r['difference_unpaid_cents'],
+        'difference_cents': -(r['difference_paid_cents'] + r['difference_unpaid_cents']),
     } for r in report.get('reconciliation', [])
        if r['difference_paid_cents'] or r['difference_unpaid_cents']]
     result = {
@@ -189,6 +216,59 @@ def dataset_info(dataset=Depends(get_dataset)):
         'max_due_date': max((r['due_date'] for r in rows), default=None),
         **totals(rows), 'validation_report': active.get('validation_report') or {},
     }
+
+
+@app.get('/api/v1/imports')
+def import_history(member=Depends(require_member), db=Depends(get_db)):
+    items = (db.table('imports').select('id,filename,status,scope,validation_report,created_at,activated_at,source_exported_at')
+             .order('created_at', desc=True).limit(50).execute().data)
+    return {'imports': [public_preview(i) for i in items]}
+
+
+@app.post('/api/v1/imports/preview')
+def preview_upload(body: UploadRequest, member=Depends(require_member), db=Depends(get_db), dataset=Depends(get_dataset)):
+    return stage_upload(db, member, body, dataset)
+
+
+@app.get('/api/v1/imports/{import_id}')
+def import_preview(import_id: UUID, member=Depends(require_member), db=Depends(get_db)):
+    found = db.table('imports').select('*').eq('id', str(import_id)).limit(1).execute().data
+    if not found:
+        raise HTTPException(404, 'Import not found.')
+    return public_preview(found[0])
+
+
+@app.patch('/api/v1/imports/{import_id}/matches')
+def resolve_import_match(import_id: UUID, body: MatchRequest, member=Depends(require_member), db=Depends(get_db)):
+    require_role(member, ('admin', 'reviewer'))
+    item = rpc(db, 'resolve_utility_match', {'p_import_id': str(import_id), 'p_actor_id': member['user_id'],
+        'p_expected_revision': body.expected_revision, 'p_source_row_id': str(body.source_row_id),
+        'p_bill_id': str(body.bill_id) if body.bill_id else None})
+    return public_preview(item)
+
+
+@app.post('/api/v1/imports/{import_id}/activate')
+def activate_upload(import_id: UUID, body: ActivateRequest, member=Depends(require_member), db=Depends(get_db)):
+    return activate_import(db, member, import_id, body)
+
+
+@app.get('/api/v1/imports/{import_id}/source')
+def download_import_source(import_id: UUID, member=Depends(require_member), db=Depends(get_db)):
+    found = db.table('imports').select('storage_path,scope,filename').eq('id', str(import_id)).limit(1).execute().data
+    if not found or not found[0]['storage_path']:
+        raise HTTPException(404, 'Original file is unavailable.')
+    item = found[0]
+    bucket = item.get('scope', {}).get('bucket')
+    if not bucket:
+        raise HTTPException(404, 'Original file bucket is not recorded.')
+    signed = db.storage.from_(bucket).create_signed_url(item['storage_path'], 60, options={'download': item['filename']})
+    return {'url': signed['signedURL'], 'filename': item['filename'], 'expires_in_seconds': 60}
+
+
+@app.get('/api/v1/insights')
+def ai_insights(filters=Depends(get_filters), dataset=Depends(get_dataset)):
+    active, selected = filtered_dataset(dataset, filters)
+    return generate_insights(active, dataset[1], selected, filters)
 
 
 @app.get('/api/v1/ranking')
@@ -360,6 +440,7 @@ def save_analysis(member=Depends(require_member), dataset=Depends(get_dataset), 
 @app.get('/api/v1/review-queue')
 def saved_review_queue(
         property_id: UUID | None = None,
+        property_ids: Annotated[list[UUID] | None, Query()] = None,
         category: Literal['water_sewer', 'trash', 'other'] | None = None,
         status: Literal['open', 'in_review', 'resolved', 'dismissed'] | None = None,
         priority: Literal['low', 'medium', 'high'] | None = None,
@@ -371,8 +452,11 @@ def saved_review_queue(
         raise HTTPException(422, 'start_date must be on or before end_date.')
     if property_id and not any(r['property_id'] == str(property_id) for r in dataset[1]):
         raise HTTPException(404, 'Property is absent from the active dataset.')
+    selected_properties = {str(p) for p in property_ids or []}
+    if selected_properties - {r['property_id'] for r in dataset[1]}:
+        raise HTTPException(404, 'A selected property is absent from the active dataset.')
     return review_queue(db, dataset, property_id, category, status, priority,
-                        start_date, end_date, limit, offset)
+                        start_date, end_date, limit, offset, selected_properties)
 
 
 @app.get('/api/v1/bills/{bill_id}/investigation')

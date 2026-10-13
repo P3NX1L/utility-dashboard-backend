@@ -77,7 +77,7 @@ def latest_run(db, import_id):
 
 
 def review_queue(db, dataset, property_id=None, category=None, status=None,
-                 priority=None, start_date=None, end_date=None, limit=100, offset=0):
+                 priority=None, start_date=None, end_date=None, limit=100, offset=0, property_ids=()):
     active, rows = dataset
     run = latest_run(db, active['id'])
     if run is None:
@@ -89,6 +89,8 @@ def review_queue(db, dataset, property_id=None, category=None, status=None,
     for flag in flags:
         a = flag['evidence']
         if property_id and a['property_id'] != str(property_id):
+            continue
+        if property_ids and a['property_id'] not in property_ids:
             continue
         if category and a['category'] != category:
             continue

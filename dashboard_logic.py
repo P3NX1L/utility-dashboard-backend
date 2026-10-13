@@ -144,6 +144,8 @@ def bill_detail(row):
         'category': row['category'], 'transaction_type': row['transaction_type'],
         'due_date': row['due_date'], 'paid_date': row['paid_date'],
         'description': row['description'], 'reading_type': row['reading_type'],
+        'usage_value': row.get('usage_value'), 'usage_unit': row.get('usage_unit'),
+        'payment_reference': row.get('payment_reference'),
         'paid_cents': paid, 'unpaid_cents': unpaid, 'total_cents': amount,
         'service_start': row['service_start'], 'service_end': row['service_end'],
         'duration_days': row['duration_days'], 'period_status': row['period_status'],
@@ -152,5 +154,5 @@ def bill_detail(row):
         'cost_per_day_is_provisional': eligible and row['period_status'] == 'inferred',
         'cost_per_day_requires_charge_review': eligible,
         'quality_issues': row['quality_issues'],
-        'source': {'sheet': row['source_sheet'], 'row': row['source_row']},
+        'source': {'filename': row.get('source_filename'), 'sheet': row['source_sheet'], 'row': row['source_row']},
     }
