@@ -1,6 +1,14 @@
-# Utility Dashboard API — v0.6.0
+# Utility Dashboard API — v0.7.0
 
-The existing Supabase database and authentication are the source of truth. Lovable supplies the frontend; Render hosts this Python API. This release replaces broad AI insights with short bill explanations and a persistent cache for complex cases.
+The existing Supabase database and authentication are the source of truth. Lovable supplies the frontend; Render hosts this Python API. This release adds a focused read-only utility-data question endpoint while retaining short bill explanations.
+
+## Ask your data
+
+`POST /api/v1/chat` accepts `import_id`, `question` (1–1200 characters), `property_ids` (null for all, otherwise a nonempty UUID list), `category`, `start_date`, `end_date`, and optional `bill_id`. Approved admins, reviewers and viewers can ask questions; the endpoint never writes records or changes review statuses. Unknown buildings, stale imports, invalid ranges and empty selections are rejected before AI is called.
+
+The existing server-only `OPENAI_API_KEY` and `OPENAI_MODEL` interpret questions into a strict, validated intent and period. AI receives the question, selected building names/IDs and filter dates; it does not receive the ledger, accounts, descriptions, investigation notes or numeric expense results. Responses use `store:false`. Only predefined Python functions calculate totals, building comparisons, due-month trends, period increases, saved unresolved review priorities, potential duplicates and specific bill explanations. There is no generated SQL or arbitrary tool execution. User-selected building scope cannot be expanded by the model. Each response includes its effective scope, source filename, exact cents, typed table columns and record IDs for supporting frontend links. Questions needing unsupported physical usage, forecasts, diagnosis or writes receive clarification rather than invented facts.
+
+Rate limits per backend instance: one active request per user, at most three active requests globally, ten questions per user per minute and sixty per hour. One upstream call, bounded timeout and output; no automatic AI retry. The frontend keeps conversations in memory only and discards old-import or cancelled responses. This first version treats each question independently; follow-up context is not inferred. Missing records remain unavailable rather than zero; limited history alone is not a review concern.
 
 ## Run / deploy
 
@@ -56,6 +64,6 @@ GET /api/v1/review-queue supports repeated property_ids as well as legacy proper
 
 Run `python -m pytest tests -q`. Tests cover cache reuse, changed evidence, concurrent generation claims, failed-AI fallback, schema validation, stale-version rejection and authentication, alongside the existing import/review/monthly tests. Building monthly and account totals reconcile against all 68 original properties across all three charge scopes. Transaction-only database checks covered preview isolation, activation + analysis, unchanged review carry-forward, changed-review staleness, uncertain match resolution and stale revision rejection. Tests rolled back; no test records remain.
 
-The v0.5.1 backend is deployed and verified. This v0.6.0 explanation endpoint requires repository upload and Render deployment before live acceptance. Mobile and concurrent browser acceptance remain pending.
+The v0.6.0 backend is deployed and verified. This v0.7.0 question endpoint requires repository upload and Render deployment before live acceptance. Mobile and concurrent browser acceptance remain pending.
 
 Possible extensions: verified physical units/consumption, provider rate comparisons, seasonal/weather context, assignment, richer source corrections and additional export formats. These require explicit supporting data and tests.

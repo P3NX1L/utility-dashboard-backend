@@ -26,9 +26,10 @@ from workflow import (ReviewUpdate, investigation_detail, persist_analysis,
 from import_workflow import (UploadRequest, ActivateRequest, MatchRequest, stage_upload,
                              public_preview, activate_import)
 from bill_explanations import ExplanationRequest, explain_bill
+from data_chat import ChatRequest, answer_question
 
 load_dotenv(Path(__file__).with_name('.env'))
-app = FastAPI(title='Utility Dashboard API', version='0.6.0')
+app = FastAPI(title='Utility Dashboard API', version='0.7.0')
 logger = logging.getLogger('utility_api')
 _dataset_cache = {}
 _dataset_cache_lock = Lock()
@@ -42,6 +43,15 @@ app.add_middleware(CORSMiddleware, allow_origins=origins, allow_credentials=Fals
 
 @app.middleware('http')
 async def no_private_cache(request: Request, call_next):
+    if request.method == 'POST' and request.url.path == '/api/v1/chat':
+        length = request.headers.get('content-length')
+        if length is None:
+            return JSONResponse(status_code=411, content={'detail': 'Question request must include Content-Length.'})
+        try:
+            if not 0 <= int(length) <= 16 * 1024:
+                return JSONResponse(status_code=413, content={'detail': 'Question request is too large.'})
+        except ValueError:
+            return JSONResponse(status_code=400, content={'detail': 'Invalid request length.'})
     if request.method == 'POST' and request.url.path == '/api/v1/imports/preview':
         length = request.headers.get('content-length')
         if length is None:
@@ -193,6 +203,12 @@ def health():
 @app.get('/api/v1/me')
 def me(member=Depends(require_member)):
     return member
+
+
+@app.post('/api/v1/chat')
+def ask_data(body: ChatRequest, member=Depends(require_member),
+             dataset=Depends(get_dataset), db=Depends(get_db)):
+    return answer_question(db, member, dataset, body)
 
 
 @app.get('/api/v1/properties')
