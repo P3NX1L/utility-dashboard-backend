@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Utility Dashboard API",
-    "version": "0.5.1"
+    "version": "0.6.0"
   },
   "paths": {
     "/health": {
@@ -338,10 +338,10 @@
         }
       }
     },
-    "/api/v1/insights": {
-      "get": {
-        "summary": "Ai Insights",
-        "operationId": "ai_insights_api_v1_insights_get",
+    "/api/v1/bills/{bill_id}/explanation": {
+      "post": {
+        "summary": "Bill Explanation",
+        "operationId": "bill_explanation_api_v1_bills__bill_id__explanation_post",
         "security": [
           {
             "HTTPBearer": []
@@ -349,81 +349,26 @@
         ],
         "parameters": [
           {
-            "name": "property_ids",
-            "in": "query",
-            "required": false,
+            "name": "bill_id",
+            "in": "path",
+            "required": true,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "array",
-                  "items": {
-                    "type": "string",
-                    "format": "uuid"
-                  }
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Property Ids"
-            }
-          },
-          {
-            "name": "category",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "enum": [
-                    "water_sewer",
-                    "trash",
-                    "other"
-                  ],
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Category"
-            }
-          },
-          {
-            "name": "start_date",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string",
-                  "format": "date"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Start Date"
-            }
-          },
-          {
-            "name": "end_date",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string",
-                  "format": "date"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "End Date"
+              "type": "string",
+              "format": "uuid",
+              "title": "Bill Id"
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExplanationRequest"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -1781,6 +1726,27 @@
           "expected_revision"
         ],
         "title": "ActivateRequest"
+      },
+      "ExplanationRequest": {
+        "properties": {
+          "import_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Import Id"
+          },
+          "bill_version_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Bill Version Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "import_id",
+          "bill_version_id"
+        ],
+        "title": "ExplanationRequest"
       },
       "HTTPValidationError": {
         "properties": {

@@ -1,6 +1,6 @@
-# Utility Dashboard API — v0.5.1
+# Utility Dashboard API — v0.6.0
 
-The existing Supabase database and authentication are the source of truth. Lovable supplies the frontend; Render hosts this Python API. This release adds building monthly totals and account breakdowns to the validated Excel import, AI and investigation workflows.
+The existing Supabase database and authentication are the source of truth. Lovable supplies the frontend; Render hosts this Python API. This release replaces broad AI insights with short bill explanations and a persistent cache for complex cases.
 
 ## Run / deploy
 
@@ -30,7 +30,9 @@ GET /api/v1/imports lists history; GET /api/v1/imports/{id} reads a preview; GET
 
 All deviations remain reviewable, including decreases and small changes. Significant changes are a separate focus view, not a deletion rule. Baselines use earlier eligible, nonoverlapping same-account/category/reading periods and never future records. Costs and expected values are computed in Python; AI only explains evidence and suggests checks. Inferred dates are provisional. Spending changes do not establish leaks or incorrect billing.
 
-GET /api/v1/insights uses the same property/category/date scope as the overview. AI receives computed metrics and opaque evidence references, excluding property names, addresses, accounts, raw descriptions, notes and credentials. Outputs are structured and references validated. Responses use store:false; results are cached by import/model/filter scope. Human review is required.
+POST /api/v1/bills/{bill_id}/explanation accepts import_id and bill_version_id. The authenticated endpoint checks both against the active snapshot. Simple cases return factual templates without calling AI. For complex cases, AI selects up to two approved computed clauses, rather than authoring unverified facts. Only those clauses reach OpenAI; no property names, addresses, accounts, descriptions, notes, files or credentials are included. Responses use store:false. The server-only bill_explanation_cache persists results by import, bill version, analysis evidence, model and prompt version. Unique claims prevent duplicate simultaneous generation. Failed generation uses the factual template and does not repeatedly spend credits for the same evidence. Stale pending claims can recover after two minutes. New evidence produces a new cache key. The former /api/v1/insights endpoint is removed.
+
+Apply migrations/005_bill_explanation_cache.sql once on a new database. It is already installed on the existing project. RLS is enabled; anon/authenticated have no table privileges. All reads and writes go through the approved-member FastAPI endpoint using the server-only Supabase key.
 
 Source usage numbers are extracted without inventing physical units. usage_unit remains null until verified. Transaction-row sums are authoritative expense figures.
 
@@ -46,14 +48,14 @@ GET /api/v1/review-queue supports repeated property_ids as well as legacy proper
 - dashboard_logic.py: exact totals, building/account monthly expense, year comparisons and source-traceable ledger details.
 - deviation_logic.py: explainable historical baselines and shared chart/flag evidence.
 - workflow.py: saved analysis, review queue, revision-safe review updates.
-- insights.py: constrained AI explanations over computed evidence.
+- bill_explanations.py: short factual templates, constrained AI clause selection and persistent cache.
 - main.py: authenticated API, explicit CORS and request limits. Snapshot caching never bypasses authorization.
-- Lovable frontend: typed DataSource adapter, shared filters, review drawer, in-memory drafts and upload/insight screens.
+- Lovable frontend: typed DataSource adapter, shared filters, review drawer, in-memory drafts and upload screens.
 
 ## Verification and limitations
 
-Run `python -m pytest tests -q`: 50 tests passed during development. Building monthly and account totals also reconcile against all 68 original properties across all three charge scopes. Transaction-only database checks covered preview isolation, activation + analysis, unchanged review carry-forward, changed-review staleness, uncertain match resolution and stale revision rejection. Tests rolled back; no test records remain.
+Run `python -m pytest tests -q`. Tests cover cache reuse, changed evidence, concurrent generation claims, failed-AI fallback, schema validation, stale-version rejection and authentication, alongside the existing import/review/monthly tests. Building monthly and account totals reconcile against all 68 original properties across all three charge scopes. Transaction-only database checks covered preview isolation, activation + analysis, unchanged review carry-forward, changed-review staleness, uncertain match resolution and stale revision rejection. Tests rolled back; no test records remain.
 
-The v0.5.0 backend and actual AI responses have been verified live. The new v0.5.1 monthly endpoint requires repository upload and Render deployment before live acceptance. Mobile and concurrent browser acceptance remain pending.
+The v0.5.1 backend is deployed and verified. This v0.6.0 explanation endpoint requires repository upload and Render deployment before live acceptance. Mobile and concurrent browser acceptance remain pending.
 
 Possible extensions: verified physical units/consumption, provider rate comparisons, seasonal/weather context, assignment, richer source corrections and additional export formats. These require explicit supporting data and tests.

@@ -25,10 +25,10 @@ from workflow import (ReviewUpdate, investigation_detail, persist_analysis,
                       require_role, review_queue, rpc, read_all)
 from import_workflow import (UploadRequest, ActivateRequest, MatchRequest, stage_upload,
                              public_preview, activate_import)
-from insights import generate_insights
+from bill_explanations import ExplanationRequest, explain_bill
 
 load_dotenv(Path(__file__).with_name('.env'))
-app = FastAPI(title='Utility Dashboard API', version='0.5.1')
+app = FastAPI(title='Utility Dashboard API', version='0.6.0')
 logger = logging.getLogger('utility_api')
 _dataset_cache = {}
 _dataset_cache_lock = Lock()
@@ -265,10 +265,10 @@ def download_import_source(import_id: UUID, member=Depends(require_member), db=D
     return {'url': signed['signedURL'], 'filename': item['filename'], 'expires_in_seconds': 60}
 
 
-@app.get('/api/v1/insights')
-def ai_insights(filters=Depends(get_filters), dataset=Depends(get_dataset)):
-    active, selected = filtered_dataset(dataset, filters)
-    return generate_insights(active, dataset[1], selected, filters)
+@app.post('/api/v1/bills/{bill_id}/explanation')
+def bill_explanation(bill_id: UUID, body: ExplanationRequest,
+                     dataset=Depends(get_dataset), db=Depends(get_db)):
+    return explain_bill(db, dataset, bill_id, body)
 
 
 @app.get('/api/v1/ranking')
