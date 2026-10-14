@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict
 from uuid import UUID
 
 from deviation_logic import evaluate, METHOD_VERSION
+from http_transport import verified_client
 
 PROMPT_VERSION = 'short_bill_clauses_v1'
 REASONS = {
@@ -104,7 +105,7 @@ def generate_ai(clauses, key, model):
     schema = {'type': 'object', 'additionalProperties': False, 'required': ['clauses'],
               'properties': {'clauses': {'type': 'array', 'minItems': 1, 'maxItems': 2,
                                          'items': {'type': 'string', 'enum': clauses}}}}
-    with httpx.Client(timeout=25) as client:
+    with verified_client(timeout=25) as client:
         r = client.post('https://api.openai.com/v1/responses', headers={'Authorization': f'Bearer {key}'},
                         json={'model': model, 'store': False, 'max_output_tokens': 400,
                               'input': [{'role': 'system', 'content':

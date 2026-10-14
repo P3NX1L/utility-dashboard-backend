@@ -1,4 +1,6 @@
-# Utility Dashboard API — v0.7.0
+# Utility Dashboard API — v0.7.1
+
+This patch reuses TLS certificate configuration across isolated per-request clients and reads only public import metadata for preview/history/repeated uploads. Staged ledger payloads remain server-only and are loaded only for matching or activation, reducing memory pressure on the existing service. Upload, matching and activation behavior is unchanged.
 
 The existing Supabase database and authentication are the source of truth. Lovable supplies the frontend; Render hosts this Python API. This release adds a focused read-only utility-data question endpoint while retaining short bill explanations.
 

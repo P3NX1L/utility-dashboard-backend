@@ -19,6 +19,7 @@ from bill_explanations import short_template
 from dashboard_logic import totals, monthly, select_rows, year_comparison, comparison
 from deviation_logic import evaluate
 from workflow import review_queue
+from http_transport import verified_client
 
 CATEGORIES = {'water_sewer': 'Water & Sewer', 'trash': 'Trash', 'other': 'Other charges'}
 ATTENTION_REASONS = {'duplicate_candidate', 'multiple_service_charges_same_due_date'}
@@ -144,7 +145,7 @@ def parse_question(body, properties, latest_due):
                'start_date': body.start_date.isoformat(), 'end_date': body.end_date.isoformat(),
                'selected_bill_id': str(body.bill_id) if body.bill_id else None, 'latest_due': latest_due}
     try:
-        with httpx.Client(timeout=httpx.Timeout(30.0, connect=5.0)) as client:
+        with verified_client(timeout=httpx.Timeout(30.0, connect=5.0)) as client:
             response = client.post('https://api.openai.com/v1/responses',
                 headers={'Authorization': f'Bearer {key}'},
                 json={'model': model, 'store': False, 'max_output_tokens': 700,

@@ -22,6 +22,9 @@ from workflow import require_role, rpc
 NAMESPACE = UUID('c5cfec7b-726a-46cd-a8b9-87adf39e072f')
 MAX_BYTES = 5 * 1024 * 1024
 MAX_ROWS = 20000
+PUBLIC_IMPORT_COLUMNS = ('id,filename,status,created_at,activated_at,source_exported_at,validation_report,'
+                         'revision:scope->revision,base_import_id:scope->base_import_id,'
+                         'pending_matches:scope->pending_matches')
 
 
 class UploadRequest(BaseModel):
@@ -210,12 +213,14 @@ def build_preview(records, raw, report, active, old_rows, properties=None, accou
 
 def public_preview(item):
     scope = item.get('scope') or {}
+    if not scope:
+        scope = {key: item.get(key) for key in ('revision', 'base_import_id', 'pending_matches')}
     report = item.get('validation_report') or {}
     return {'import_id': item['id'], 'filename': item['filename'], 'status': item['status'],
             'created_at': item.get('created_at'), 'activated_at': item.get('activated_at'),
             'source_exported_at': item.get('source_exported_at'),
-            'revision': scope.get('revision', 0), 'base_import_id': scope.get('base_import_id'),
-            'validation_report': report, 'pending_matches': scope.get('pending_matches', []),
+            'revision': scope.get('revision') or 0, 'base_import_id': scope.get('base_import_id'),
+            'validation_report': report, 'pending_matches': scope.get('pending_matches') or [],
             'transaction_count': report.get('transaction_count'), 'property_count': report.get('property_count'),
             'total_cents': report.get('totals_cents', {}).get('total_cents')}
 
@@ -231,7 +236,7 @@ def stage_upload(db, member, request, dataset):
     except (ValueError, zipfile.BadZipFile, KeyError, OSError) as exc:
         raise HTTPException(422, str(exc)) from None
     file_hash = hashlib.sha256(content).hexdigest()
-    existing = db.table('imports').select('*').eq('file_sha256', file_hash).limit(1).execute().data
+    existing = db.table('imports').select(PUBLIC_IMPORT_COLUMNS).eq('file_sha256', file_hash).limit(1).execute().data
     if existing:
         return {**public_preview(existing[0]), 'already_uploaded': True}
     try:

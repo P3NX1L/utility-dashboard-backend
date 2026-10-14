@@ -24,12 +24,13 @@ from dashboard_logic import bill_detail, building_monthly, monthly, period_overl
 from workflow import (ReviewUpdate, investigation_detail, persist_analysis,
                       require_role, review_queue, rpc, read_all)
 from import_workflow import (UploadRequest, ActivateRequest, MatchRequest, stage_upload,
-                             public_preview, activate_import)
+                             public_preview, activate_import, PUBLIC_IMPORT_COLUMNS)
 from bill_explanations import ExplanationRequest, explain_bill
 from data_chat import ChatRequest, answer_question
+from http_transport import verified_client
 
 load_dotenv(Path(__file__).with_name('.env'))
-app = FastAPI(title='Utility Dashboard API', version='0.7.0')
+app = FastAPI(title='Utility Dashboard API', version='0.7.1')
 logger = logging.getLogger('utility_api')
 _dataset_cache = {}
 _dataset_cache_lock = Lock()
@@ -83,7 +84,7 @@ def get_db():
     if not url or not key:
         raise HTTPException(503, 'Supabase configuration is missing.')
     # Each request has an isolated client. Never sign users into this service client.
-    with httpx.Client(timeout=30.0) as transport:
+    with verified_client(timeout=30.0) as transport:
         yield create_client(url, key, options=ClientOptions(
             persist_session=False, auto_refresh_token=False, httpx_client=transport))
 
@@ -109,11 +110,12 @@ def require_member(credentials: Annotated[HTTPAuthorizationCredentials | None, D
 
 
 def get_dataset(member=Depends(require_member), db=Depends(get_db)):
-    imports = (db.table('imports').select('id,filename,activated_at,source_exported_at,validation_report,scope')
+    imports = (db.table('imports').select('id,filename,activated_at,source_exported_at,validation_report,bucket:scope->bucket')
                .eq('status', 'active').limit(2).execute().data)
     if len(imports) != 1:
         raise HTTPException(409, 'Exactly one active dataset is required.')
     active = imports[0]
+    active['scope'] = {'bucket': active.pop('bucket', None)}
     # Authorization is still checked on every request. The company-wide immutable
     # snapshot cache only avoids refetching every ledger page for each widget.
     with _dataset_cache_lock:
@@ -236,7 +238,7 @@ def dataset_info(dataset=Depends(get_dataset)):
 
 @app.get('/api/v1/imports')
 def import_history(member=Depends(require_member), db=Depends(get_db)):
-    items = (db.table('imports').select('id,filename,status,scope,validation_report,created_at,activated_at,source_exported_at')
+    items = (db.table('imports').select(PUBLIC_IMPORT_COLUMNS)
              .order('created_at', desc=True).limit(50).execute().data)
     return {'imports': [public_preview(i) for i in items]}
 
@@ -248,7 +250,7 @@ def preview_upload(body: UploadRequest, member=Depends(require_member), db=Depen
 
 @app.get('/api/v1/imports/{import_id}')
 def import_preview(import_id: UUID, member=Depends(require_member), db=Depends(get_db)):
-    found = db.table('imports').select('*').eq('id', str(import_id)).limit(1).execute().data
+    found = db.table('imports').select(PUBLIC_IMPORT_COLUMNS).eq('id', str(import_id)).limit(1).execute().data
     if not found:
         raise HTTPException(404, 'Import not found.')
     return public_preview(found[0])
