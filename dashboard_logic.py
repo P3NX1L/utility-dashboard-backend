@@ -62,6 +62,58 @@ def monthly(rows, start_date=None, end_date=None):
     return result
 
 
+def building_monthly(rows, start_date=None, end_date=None, category=None, charge_scope='regular'):
+    """Recorded expense by due month. No allocation of inferred service periods.
+
+    Account coverage means observed records, never an expected invoice schedule.
+    Entire category history establishes the known accounts; display dates do not.
+    """
+    history = select_rows(rows, category=category)
+    selected = select_rows(history, start_date=start_date, end_date=end_date)
+    regular = [r for r in selected if r['transaction_type'] == 'service_candidate']
+    other = [r for r in selected if r['transaction_type'] != 'service_candidate']
+    plotted = regular if charge_scope == 'regular' else other if charge_scope == 'other' else selected
+    scope_history = [r for r in history if charge_scope == 'all' or
+                     (r['transaction_type'] == 'service_candidate') == (charge_scope == 'regular')]
+    known = {r['account_id']: r['account_number'] for r in scope_history}
+    accounts = [{'account_id': key, 'account_number': known[key]}
+                for key in sorted(known, key=lambda key: (known[key] or '', key))]
+    # If only fees occur, keep that selected interval visible as gaps in regular view.
+    start = start_date or (date.fromisoformat(min(r['due_date'] for r in selected)) if selected else None)
+    end = end_date or (date.fromisoformat(max(r['due_date'] for r in selected)) if selected else None)
+    points = monthly(plotted, start, end)
+    grouped = defaultdict(list)
+    for r in plotted:
+        grouped[r['due_date'][:7]].append(r)
+    previous = None
+    for p in points:
+        records = grouped[p['month']]
+        contributors = sorted({r['account_id'] for r in records})
+        p.update(bill_ids=[r['bill_id'] for r in sorted(records, key=lambda r: (r['due_date'], r['id']))],
+                 recorded_account_ids=contributors, recorded_account_count=len(contributors),
+                 known_account_count=len(known),
+                 account_set_changed=previous is not None and contributors != previous)
+        previous = contributors
+    breakdown = []
+    for account in accounts:
+        account_rows = [r for r in plotted if r['account_id'] == account['account_id']]
+        breakdown.append({**account, 'months': monthly(account_rows, start, end)})
+    return {
+        'date_basis': 'due_date', 'charge_scope': charge_scope, 'months': points,
+        'accounts': accounts, 'account_series': breakdown,
+        'totals': totals(plotted), 'regular_totals': totals(regular),
+        'other_charge_totals': totals(other), 'all_charge_totals': totals(selected),
+        'coverage': {
+            'known_account_count': len(known),
+            'observed_account_coverage_varies': any(p['account_set_changed'] or
+                (len(known) > 1 and p['recorded_account_count'] != len(known)) for p in points),
+            'complete_billing_history_verified': False,
+            'note': 'Account counts describe recorded bills, not expected bills. Billing timing or account changes can shift monthly totals. No records means unavailable, not zero expense.',
+        },
+        'note': 'Monthly recorded expense by bill due date, not calendar consumption. Regular utility bills exclude payment-plan installments, penalties, credits and other separate charges; All charges retains the complete signed ledger.',
+    }
+
+
 def comparison(current, previous):
     """No rows is missing evidence; zero/negative prior totals have no percentage."""
     current_total = totals(current)['total_cents'] if current else None

@@ -20,7 +20,7 @@ from supabase import ClientOptions, create_client
 from supabase_auth.errors import AuthApiError
 
 from deviation_logic import analyze
-from dashboard_logic import bill_detail, monthly, period_overlaps, select_rows, totals, year_comparison
+from dashboard_logic import bill_detail, building_monthly, monthly, period_overlaps, select_rows, totals, year_comparison
 from workflow import (ReviewUpdate, investigation_detail, persist_analysis,
                       require_role, review_queue, rpc, read_all)
 from import_workflow import (UploadRequest, ActivateRequest, MatchRequest, stage_upload,
@@ -28,7 +28,7 @@ from import_workflow import (UploadRequest, ActivateRequest, MatchRequest, stage
 from insights import generate_insights
 
 load_dotenv(Path(__file__).with_name('.env'))
-app = FastAPI(title='Utility Dashboard API', version='0.5.0')
+app = FastAPI(title='Utility Dashboard API', version='0.5.1')
 logger = logging.getLogger('utility_api')
 _dataset_cache = {}
 _dataset_cache_lock = Lock()
@@ -395,6 +395,29 @@ def property_bills(
         'next_offset': offset + limit if offset + limit < len(selected) else None,
         'bills': details,
     }
+
+
+@app.get('/api/v1/properties/{property_id}/monthly')
+def property_monthly(
+        property_id: UUID,
+        category: Literal['water_sewer', 'trash', 'other'] | None = None,
+        charge_scope: Literal['regular', 'all', 'other'] = 'regular',
+        start_date: date | None = None, end_date: date | None = None,
+        dataset=Depends(get_dataset)):
+    active, all_rows = dataset
+    if start_date and end_date and start_date > end_date:
+        raise HTTPException(422, 'start_date must be on or before end_date.')
+    rows = [r for r in all_rows if r['property_id'] == str(property_id)]
+    if not rows:
+        raise HTTPException(404, 'Property is absent from the active dataset.')
+    start = start_date or date.fromisoformat(min(r['due_date'] for r in rows))
+    end = end_date or date.fromisoformat(max(r['due_date'] for r in rows))
+    if (end.year - start.year) * 12 + end.month - start.month > 120:
+        raise HTTPException(422, 'Select no more than 10 years per request.')
+    return {**metadata(active), 'property': {'id': str(property_id), 'name': rows[0]['property_name']},
+            'filters': {'category': category, 'charge_scope': charge_scope,
+                        'start_date': start_date, 'end_date': end_date},
+            **building_monthly(rows, start, end, category, charge_scope)}
 
 
 @app.get('/api/v1/properties/{property_id}/analysis')

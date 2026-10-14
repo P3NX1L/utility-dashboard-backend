@@ -1,6 +1,6 @@
-# Utility Dashboard API — v0.5.0
+# Utility Dashboard API — v0.5.1
 
-The existing Supabase database and authentication are the source of truth. Lovable supplies the frontend; Render hosts this Python API. This release adds validated Excel imports and evidence-based AI integration to the existing expense analytics and investigation workflow.
+The existing Supabase database and authentication are the source of truth. Lovable supplies the frontend; Render hosts this Python API. This release adds building monthly totals and account breakdowns to the validated Excel import, AI and investigation workflows.
 
 ## Run / deploy
 
@@ -32,7 +32,9 @@ All deviations remain reviewable, including decreases and small changes. Signifi
 
 GET /api/v1/insights uses the same property/category/date scope as the overview. AI receives computed metrics and opaque evidence references, excluding property names, addresses, accounts, raw descriptions, notes and credentials. Outputs are structured and references validated. Responses use store:false; results are cached by import/model/filter scope. Human review is required.
 
-Source usage numbers are extracted without inventing physical units. usage_unit remains null until verified. Source reconciliation preserves actual transaction sums and exposes inconsistent export control totals; no fabricated balancing entry is created.
+Source usage numbers are extracted without inventing physical units. usage_unit remains null until verified. Transaction-row sums are authoritative expense figures.
+
+GET /api/v1/properties/{property_id}/monthly supplies monthly recorded building expense and an aligned breakdown for each account. Parameters: category, start_date, end_date and charge_scope (regular, other, all). Regular includes service_candidate transactions; Other separates installments, penalties, credits and remaining charges; All retains the complete signed ledger. Totals and breakdowns are computed in integer cents on the backend. Missing-month values are null, not assumed zero. Dates are bill due dates, without service-period allocation. Account coverage describes observed records and never asserts an expected invoice schedule. The account-level analysis and review endpoints remain the source of individual bill flags; monthly totals do not create a new baseline or hide offsetting account-level alerts.
 
 GET /api/v1/review-queue supports repeated property_ids as well as legacy property_id. Filtering happens before counts and pagination. All business endpoints verify a Supabase token and current approved membership. Full schemas are in openapi.json and the hosted /docs endpoint.
 
@@ -41,7 +43,7 @@ GET /api/v1/review-queue supports repeated property_ids as well as legacy proper
 - prepare_ledger.py: normalize exported rows, exact cents, date/classification evidence, duplicate groups and reconciliation.
 - import_workflow.py: validate workbook, match stable bills, stage previews and request atomic activation.
 - import_schema.sql: membership-checked transaction boundaries, revision-safe matching and unchanged-review carry-forward.
-- dashboard_logic.py: exact totals, monthly and year comparisons, source-traceable ledger details.
+- dashboard_logic.py: exact totals, building/account monthly expense, year comparisons and source-traceable ledger details.
 - deviation_logic.py: explainable historical baselines and shared chart/flag evidence.
 - workflow.py: saved analysis, review queue, revision-safe review updates.
 - insights.py: constrained AI explanations over computed evidence.
@@ -50,8 +52,8 @@ GET /api/v1/review-queue supports repeated property_ids as well as legacy proper
 
 ## Verification and limitations
 
-Run `python -m pytest tests -q`: 42 tests passed during development. Transaction-only database checks covered preview isolation, activation + analysis, unchanged review carry-forward, changed-review staleness, uncertain match resolution and stale revision rejection. Tests rolled back; no test records remain.
+Run `python -m pytest tests -q`: 50 tests passed during development. Building monthly and account totals also reconcile against all 68 original properties across all three charge scopes. Transaction-only database checks covered preview isolation, activation + analysis, unchanged review carry-forward, changed-review staleness, uncertain match resolution and stale revision rejection. Tests rolled back; no test records remain.
 
-Live v0.5.0 deployment and real AI response validation must be completed after repository upload and server key configuration. Mobile and concurrent browser acceptance are still required. Do not describe these as passed before they are checked.
+The v0.5.0 backend and actual AI responses have been verified live. The new v0.5.1 monthly endpoint requires repository upload and Render deployment before live acceptance. Mobile and concurrent browser acceptance remain pending.
 
 Possible extensions: verified physical units/consumption, provider rate comparisons, seasonal/weather context, assignment, richer source corrections and additional export formats. These require explicit supporting data and tests.
