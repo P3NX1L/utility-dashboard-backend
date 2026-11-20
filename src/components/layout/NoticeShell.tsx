@@ -1,11 +1,12 @@
 import { Link, useLocation } from "@tanstack/react-router";
 import { useEffect, useState, type ReactNode } from "react";
-import { FileText, Mail, KeyRound, ChevronDown, Menu, LogOut } from "lucide-react";
+import { FileText, Mail, KeyRound, ChevronDown, Menu, LogOut, List } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const logo = "https://1stwesterndashboard.xyz/__l5e/assets-v1/df0c4a52-40e0-4ec9-a986-8bbe34942c8d/first-western-logo-hd.png";
 export function NoticeShell({ children, email, signOut }: { children: ReactNode; email: string | null; signOut: (() => void) | null }) {
   const path = useLocation().pathname;
+  const mapping = path === "/five-day/legal-owner-mapping";
   const access = path.startsWith("/access");
   const exports = path.endsWith("/exports");
   const [expanded, setExpanded] = useState({ "five-day": !access, access });
@@ -20,8 +21,9 @@ export function NoticeShell({ children, email, signOut }: { children: ReactNode;
         <button type="button" aria-expanded={expanded[kind]} aria-controls={`${prefix}-${kind}`} onClick={() => setExpanded((old) => ({ ...old, [kind]: !old[kind] }))} className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-semibold transition-colors hover:bg-sidebar-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"><Icon className="size-[22px] shrink-0 text-primary" /><span className="flex-1 text-left">{isAccess ? "Access Notice" : "5-Day Notice"}</span><ChevronDown className={`size-4 shrink-0 transition-transform motion-reduce:transition-none ${expanded[kind] ? "" : "-rotate-90"}`} /></button>
         {expanded[kind] && <div id={`${prefix}-${kind}`} className="mt-2 ml-3 flex flex-col gap-5 border-l border-sidebar-border pl-2">
           <div><div className="mb-2 px-3 text-xs font-semibold">Notice Processing</div><div className="space-y-1">
-          <Link to={isAccess ? "/access" : "/five-day"} onClick={() => setMobileOpen(false)} className={`${linkClass} ${active && !exports ? "bg-sidebar-accent text-sidebar-foreground" : "hover:bg-muted"}`} aria-current={active && !exports ? "page" : undefined}><FileText aria-hidden="true" className="size-4 shrink-0 text-primary" /><span>Generate Notice</span></Link>
+          <Link to={isAccess ? "/access" : "/five-day"} onClick={() => setMobileOpen(false)} className={`${linkClass} ${active && !exports && !mapping ? "bg-sidebar-accent text-sidebar-foreground" : "hover:bg-muted"}`} aria-current={active && !exports && !mapping ? "page" : undefined}><FileText aria-hidden="true" className="size-4 shrink-0 text-primary" /><span>Generate Notice</span></Link>
           <Link to={isAccess ? "/access/exports" : "/five-day/exports"} onClick={() => setMobileOpen(false)} className={`${linkClass} ${active && exports ? "bg-sidebar-accent text-sidebar-foreground" : "hover:bg-muted"}`} aria-current={active && exports ? "page" : undefined}><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="size-4 shrink-0 text-primary"><path d="M12 3v12" /><path d="m7 10 5 5 5-5" /><path d="M3.5 16.5v2.5a2 2 0 0 0 2 2h13a2 2 0 0 0 2-2v-2.5" /></svg><span>Exports</span></Link>
+          {!isAccess && <Link to="/five-day/legal-owner-mapping" onClick={() => setMobileOpen(false)} className={`${linkClass} ${mapping ? "bg-sidebar-accent text-sidebar-foreground" : "hover:bg-muted"}`} aria-current={mapping ? "page" : undefined}><List className="size-4 shrink-0 text-primary" aria-hidden="true" />Legal owner mapping</Link>}
           </div></div>
         </div>}
       </div>;

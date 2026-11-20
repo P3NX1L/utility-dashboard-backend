@@ -14,6 +14,7 @@ import { Route as AccessRouteImport } from './routes/access'
 import { Route as FiveDayRouteImport } from './routes/five-day'
 import { Route as AccessExportsRouteImport } from './routes/access_.exports'
 import { Route as FiveDayExportsRouteImport } from './routes/five-day_.exports'
+import { Route as FiveDayLegalOwnerMappingRouteImport } from './routes/five-day_.legal-owner-mapping'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -40,6 +41,12 @@ const FiveDayExportsRoute = FiveDayExportsRouteImport.update({
   path: '/five-day/exports',
   getParentRoute: () => rootRouteImport,
 } as any)
+const FiveDayLegalOwnerMappingRoute =
+  FiveDayLegalOwnerMappingRouteImport.update({
+    id: '/five-day_/legal-owner-mapping',
+    path: '/five-day/legal-owner-mapping',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -47,6 +54,7 @@ export interface FileRoutesByFullPath {
   '/five-day': typeof FiveDayRoute
   '/access/exports': typeof AccessExportsRoute
   '/five-day/exports': typeof FiveDayExportsRoute
+  '/five-day/legal-owner-mapping': typeof FiveDayLegalOwnerMappingRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -54,6 +62,7 @@ export interface FileRoutesByTo {
   '/five-day': typeof FiveDayRoute
   '/access/exports': typeof AccessExportsRoute
   '/five-day/exports': typeof FiveDayExportsRoute
+  '/five-day/legal-owner-mapping': typeof FiveDayLegalOwnerMappingRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -62,13 +71,25 @@ export interface FileRoutesById {
   '/five-day': typeof FiveDayRoute
   '/access_/exports': typeof AccessExportsRoute
   '/five-day_/exports': typeof FiveDayExportsRoute
+  '/five-day_/legal-owner-mapping': typeof FiveDayLegalOwnerMappingRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    '/' | '/access' | '/five-day' | '/access/exports' | '/five-day/exports'
+    | '/'
+    | '/access'
+    | '/five-day'
+    | '/access/exports'
+    | '/five-day/exports'
+    | '/five-day/legal-owner-mapping'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/access' | '/five-day' | '/access/exports' | '/five-day/exports'
+  to:
+    | '/'
+    | '/access'
+    | '/five-day'
+    | '/access/exports'
+    | '/five-day/exports'
+    | '/five-day/legal-owner-mapping'
   id:
     | '__root__'
     | '/'
@@ -76,6 +97,7 @@ export interface FileRouteTypes {
     | '/five-day'
     | '/access_/exports'
     | '/five-day_/exports'
+    | '/five-day_/legal-owner-mapping'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -84,6 +106,7 @@ export interface RootRouteChildren {
   FiveDayRoute: typeof FiveDayRoute
   AccessExportsRoute: typeof AccessExportsRoute
   FiveDayExportsRoute: typeof FiveDayExportsRoute
+  FiveDayLegalOwnerMappingRoute: typeof FiveDayLegalOwnerMappingRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -123,6 +146,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof FiveDayExportsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/five-day_/legal-owner-mapping': {
+      id: '/five-day_/legal-owner-mapping'
+      path: '/five-day/legal-owner-mapping'
+      fullPath: '/five-day/legal-owner-mapping'
+      preLoaderRoute: typeof FiveDayLegalOwnerMappingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -132,6 +162,7 @@ const rootRouteChildren: RootRouteChildren = {
   FiveDayRoute: FiveDayRoute,
   AccessExportsRoute: AccessExportsRoute,
   FiveDayExportsRoute: FiveDayExportsRoute,
+  FiveDayLegalOwnerMappingRoute: FiveDayLegalOwnerMappingRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
