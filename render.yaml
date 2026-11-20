@@ -1,18 +1,21 @@
-# Deploy with the backend directory as the repository root.
-# Free plan is explicit to avoid implicit paid defaults. Select an always-on plan for production.
 services:
   - type: web
-    name: utility-dashboard-api
-    runtime: docker
-    plan: free
-    dockerfilePath: ./Dockerfile
-    healthCheckPath: /health
+    name: first-western-tenant-notices
+    runtime: static
+    buildCommand: bun install --frozen-lockfile && bun run build:render
+    staticPublishPath: dist/client
     envVars:
-      - key: SUPABASE_URL
-        value: https://umvyurrzgxwojlgpoofq.supabase.co
-      - key: SUPABASE_SECRET_KEY
+      - key: VITE_SUPABASE_URL
+        value: https://uowhdiufxssggeihiece.supabase.co
+      - key: VITE_SUPABASE_PUBLISHABLE_KEY
         sync: false
-      - key: SUPABASE_PUBLISHABLE_KEY
-        sync: false
-      - key: ALLOWED_ORIGINS
-        value: https://id-preview--b013ff03-737f-46ed-8df7-cbd38ae41cb6.lovable.app,https://b013ff03-737f-46ed-8df7-cbd38ae41cb6.lovableproject.com
+    routes:
+      - type: rewrite
+        source: /five-day
+        destination: /five-day/index.html
+      - type: rewrite
+        source: /access
+        destination: /access/index.html
+      - type: rewrite
+        source: /*
+        destination: /index.html

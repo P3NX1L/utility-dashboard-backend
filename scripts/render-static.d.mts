@@ -1,0 +1,1 @@
+export function prepareStaticFallback(root?: string): Promise<void>;
