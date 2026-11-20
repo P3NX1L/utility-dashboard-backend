@@ -14,4 +14,11 @@ describe("App routing", () => {
 
     expect(matches.at(-1)?.routeId).not.toBe(rootRouteId);
   });
+  it("keeps legacy generators and both independent exports pages reachable", () => {
+    const router = createRouter({ routeTree, context: { queryClient: new QueryClient() } });
+    for (const [path, id] of [["/five-day", "/five-day"], ["/access", "/access"], ["/five-day/exports", "/five-day_/exports"], ["/access/exports", "/access_/exports"]]) {
+      if (!path) throw new Error("Missing route fixture");
+      expect(router.matchRoutes(path).at(-1)?.routeId).toBe(id);
+    }
+  });
 });

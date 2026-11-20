@@ -12,6 +12,8 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AccessRouteImport } from './routes/access'
 import { Route as FiveDayRouteImport } from './routes/five-day'
+import { Route as AccessExportsRouteImport } from './routes/access_.exports'
+import { Route as FiveDayExportsRouteImport } from './routes/five-day_.exports'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -28,35 +30,60 @@ const FiveDayRoute = FiveDayRouteImport.update({
   path: '/five-day',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AccessExportsRoute = AccessExportsRouteImport.update({
+  id: '/access_/exports',
+  path: '/access/exports',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FiveDayExportsRoute = FiveDayExportsRouteImport.update({
+  id: '/five-day_/exports',
+  path: '/five-day/exports',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/access': typeof AccessRoute
   '/five-day': typeof FiveDayRoute
+  '/access/exports': typeof AccessExportsRoute
+  '/five-day/exports': typeof FiveDayExportsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/access': typeof AccessRoute
   '/five-day': typeof FiveDayRoute
+  '/access/exports': typeof AccessExportsRoute
+  '/five-day/exports': typeof FiveDayExportsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/access': typeof AccessRoute
   '/five-day': typeof FiveDayRoute
+  '/access_/exports': typeof AccessExportsRoute
+  '/five-day_/exports': typeof FiveDayExportsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/access' | '/five-day'
+  fullPaths:
+    '/' | '/access' | '/five-day' | '/access/exports' | '/five-day/exports'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/access' | '/five-day'
-  id: '__root__' | '/' | '/access' | '/five-day'
+  to: '/' | '/access' | '/five-day' | '/access/exports' | '/five-day/exports'
+  id:
+    | '__root__'
+    | '/'
+    | '/access'
+    | '/five-day'
+    | '/access_/exports'
+    | '/five-day_/exports'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AccessRoute: typeof AccessRoute
   FiveDayRoute: typeof FiveDayRoute
+  AccessExportsRoute: typeof AccessExportsRoute
+  FiveDayExportsRoute: typeof FiveDayExportsRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -82,6 +109,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof FiveDayRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/access_/exports': {
+      id: '/access_/exports'
+      path: '/access/exports'
+      fullPath: '/access/exports'
+      preLoaderRoute: typeof AccessExportsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/five-day_/exports': {
+      id: '/five-day_/exports'
+      path: '/five-day/exports'
+      fullPath: '/five-day/exports'
+      preLoaderRoute: typeof FiveDayExportsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -89,6 +130,8 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AccessRoute: AccessRoute,
   FiveDayRoute: FiveDayRoute,
+  AccessExportsRoute: AccessExportsRoute,
+  FiveDayExportsRoute: FiveDayExportsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

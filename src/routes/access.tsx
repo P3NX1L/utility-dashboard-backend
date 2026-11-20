@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { BackLink, container } from "@/components/layout/SiteHeader";
+import { AccessNoticeWorkspace } from "@/components/notices/AccessNoticeWorkspace";
 
 export const Route = createFileRoute("/access")({
   head: () => ({
@@ -17,10 +17,5 @@ export const Route = createFileRoute("/access")({
 });
 
 function AccessPage() {
-  return (
-    <div className={`${container} py-8 sm:py-10`}>
-      <BackLink />
-      <h1 className="mt-4 text-2xl font-semibold text-foreground">Access Notices</h1>
-    </div>
-  );
+  return <AccessNoticeWorkspace />;
 }

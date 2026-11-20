@@ -7,7 +7,7 @@ import { readFileToGrid, guessMapping, missingRequired, type Grid, type Mapping,
 interface Props {
   title: string;
   fields: FieldDef[];
-  demoCsv: string;
+  demoCsv?: string;
   build: (g: Grid, m: Mapping) => { count: number; issues: RowIssue[] };
 }
 
@@ -32,10 +32,10 @@ export function ImportPanel({ title, fields, demoCsv, build }: Props) {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-lg font-semibold">{title}</h2>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => load(new File([demoCsv], "fictional-sample.csv"))}>Load fictional sample</Button>
+          {demoCsv && <Button variant="outline" size="sm" onClick={() => load(new File([demoCsv], "fictional-sample.csv"))}>Load fictional sample</Button>}
           <Button asChild size="sm">
             <label className="cursor-pointer"><Upload className="size-4" /> Upload CSV / XLSX
-              <input type="file" accept=".csv,.tsv,.txt,.xlsx,.xls" className="sr-only" onChange={(e) => { const f = e.target.files?.[0]; if (f) void load(f); e.target.value = ""; }} />
+              <input type="file" aria-label="Upload occupancy roster" accept=".csv,.tsv,.txt,.xlsx,.xls" className="sr-only" onChange={(e) => { const f = e.target.files?.[0]; if (f) void load(f); e.target.value = ""; }} />
             </label>
           </Button>
         </div>
@@ -64,7 +64,7 @@ export function ImportPanel({ title, fields, demoCsv, build }: Props) {
               <thead className="bg-muted"><tr>{fields.map((f) => <th key={f.key} className="px-2 py-1 text-left">{f.label}</th>)}</tr></thead>
               <tbody>
                 {grid.rows.slice(0, 3).map((r, i) => (
-                  <tr key={i} className="border-t">{fields.map((f) => <td key={f.key} className="px-2 py-1">{(mapping[f.key] ?? -1) >= 0 ? String(r[mapping[f.key]!] ?? "") : "—"}</td>)}</tr>
+                  <tr key={i} className="border-t">{fields.map((f) => <td key={f.key} className="px-2 py-1">{(mapping[f.key] ?? -1) >= 0 ? String(r[mapping[f.key] ?? -1] ?? "") : "—"}</td>)}</tr>
                 ))}
               </tbody>
             </table>

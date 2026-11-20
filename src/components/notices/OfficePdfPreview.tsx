@@ -31,6 +31,6 @@ export default function OfficePdfPreview({ bytes, id, onRendered }: { bytes: Uin
   return <div className="relative aspect-[612/792] w-full border border-border bg-card">
     {loading && <p className="absolute inset-x-0 top-5 text-center text-sm text-muted-foreground" role="status">Rendering PDF…</p>}
     {error && <p role="alert" className="absolute inset-x-0 top-5 px-4 text-sm text-destructive">{error}</p>}
-    <canvas ref={canvas} className="h-auto w-full" aria-label="Generated 5-day notice PDF preview" />
+    <canvas ref={canvas} className="h-auto w-full" aria-label="Generated notice PDF preview" />
   </div>;
 }

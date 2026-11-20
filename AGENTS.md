@@ -30,14 +30,15 @@ use the editor.
 <!-- LOVABLE:END -->
 
 ## Project rules
-- Tenant Notices is client-only (no server functions); uploaded data stays in browser memory, so it can be hosted as a static site.
+- Tenant Notices is client-only (no server functions); imports and edits stay in memory, and only completed reviewed exports persist in user-scoped IndexedDB for static hosting.
 - Supabase is an existing external project read only from VITE_SUPABASE_URL / VITE_SUPABASE_PUBLISHABLE_KEY; never provision or migrate it from this repo.
 - Production builds must require a Supabase staff session; the no-auth demo mode is dev-only (src/lib/supabase.ts).
 - Notice layouts live in src/lib/notices/templates.ts as field-keyed block mappings; keep `isDraft` true until real office templates replace the blocks.
 - The app must never send email/SMS or call AppFolio; it only produces copyable text and printable PDFs.
-- The active 5-day route uses an isolated grouped-report model and office PDF renderer; legacy draft workspaces remain dormant so access notices and preserved files do not change.
+- The five-day generator uses its isolated grouped-report model and office PDF renderer; access uses the preserved draft template, and legacy workspaces remain dormant.
 - Keep office text coordinates in templates.ts and the supplied raster heading as a bundled local asset; pdf-lib uses Times at 12 points and measured overflow moves later baselines rather than clipping legal text.
 - ZIP generation is atomic and tied to an in-memory edit revision; discard in-flight or completed output after edits and require every byte-rendered PDF preview before download to prevent stale or incomplete handoff.
 - Keep owner and signer on each imported property group and derive selected PDF inputs from that group so edits never leak across properties.
-- Prerender only the three public, visitor-identical page shells to dist/client with Nitro disabled; Render serves those files while staff auth and uploaded tenant processing run exclusively in the browser.
+- Prerender only the five visitor-identical page shells to dist/client with Nitro disabled; Render serves those files while staff auth, histories, and tenant processing run exclusively in the browser.
 - The Render build restores only the two allowlisted PNGs from deployment-assets.json before the production build and copies the generated index to 404.html afterward; text-only exports preserve exact media bytes and the existing client router handles fallback URLs.
+- Key the entire authenticated notice shell by verified account ID; shared reviewed-export packaging emits PDF for one and ZIP for many, and only a successful reviewed download action can write that account's local history.

@@ -39,9 +39,9 @@ describe("ZIP revision safety", () => {
     ];
     for (const edit of edits) {
       fireEvent.click(screen.getByRole("button", { name: "Generate & preview 1 notice" }));
-      await waitFor(() => expect(screen.getByRole("button", { name: "Download ZIP · 1 PDFs" })).toBeEnabled());
+      await waitFor(() => expect(screen.getByRole("button", { name: "Download PDF" })).toBeEnabled());
       edit();
-      expect(screen.queryByRole("button", { name: /Download ZIP/ })).toBeNull();
+      expect(screen.queryByRole("button", { name: /Download PDF/ })).toBeNull();
     }
   });
   it("discards in-flight output if a field changes while generation is running", async () => {
@@ -52,7 +52,7 @@ describe("ZIP revision safety", () => {
     await waitFor(() => expect(generate).toHaveBeenCalledTimes(1));
     fireEvent.change(screen.getByLabelText("Printed agent for Test"), { target: { value: "Changed During Generation" } });
     await act(async () => { finish?.(result); });
-    expect(screen.queryByRole("button", { name: /Download ZIP/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Download PDF/ })).toBeNull();
     expect(screen.getByRole("button", { name: "Generate & preview 1 notice" })).toBeEnabled();
   });
 });

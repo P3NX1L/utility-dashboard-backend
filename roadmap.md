@@ -17,3 +17,13 @@ Verification uses synthetic uploads only; the real CSV was not attached. Existin
 # Text-only source export
 - [x] Encode the two original PNGs at repo root and verify byte equality.
 - [x] Add and test Render build asset restoration and index/404 fallback; document settings and commit (24 tests passed).
+
+# Notice navigation and export histories
+- [x] Replace home cards with type sidebar and Generate/Exports pages; retain direct links and mobile navigation.
+- [x] Connect both reviewed generators to PDF-for-one / ZIP-for-many downloads and user-scoped IndexedDB histories.
+- [x] Verify signatures, counts, refresh persistence, account isolation, routes, mobile, and preview build signals; commit and report every changed path.
+- [ ] Verify emitted Render production build and real signed-in account flow (blocked: no production output/deployment, publishable key, or external staff session available).
+
+# Utilities layout matching
+- [x] Match specified sidebar, expandable modules, header, main spacing, typography, and mobile menu.
+- [x] Verify live Utilities aside classes and Inter; computed 256px sidebar, 64px header, 48/32px logos, 30px headings, 14px navigation, exact gutters; 35 tests and preview build passed.

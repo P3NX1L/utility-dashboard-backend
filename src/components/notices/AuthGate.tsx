@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-export function AuthGate({ children }: { children: (ctx: { email: string | null; signOut: (() => void) | null }) => ReactNode }) {
+export function AuthGate({ children }: { children: (ctx: { userId: string; email: string | null; signOut: (() => void) | null }) => ReactNode }) {
   const [ready, setReady] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
   const [email, setEmail] = useState("");
@@ -16,17 +16,26 @@ export function AuthGate({ children }: { children: (ctx: { email: string | null;
   useEffect(() => {
     const sb = getSupabase();
     if (!sb) { setReady(true); return; }
-    const { data } = sb.auth.onAuthStateChange((_e, s) => setSession(s));
-    sb.auth.getUser().then(async ({ data: u }) => {
-      if (u.user) setSession((await sb.auth.getSession()).data.session);
-      setReady(true);
+    let active = true, version = 0;
+    const { data } = sb.auth.onAuthStateChange((event, s) => {
+      if (!active) return;
+      // Initial storage hydration must not override the verified getUser result.
+      if (event === "INITIAL_SESSION") return;
+      version++; setSession(s); setReady(true);
     });
-    return () => data.subscription.unsubscribe();
+    const initialVersion = version;
+    void sb.auth.getUser().then(async ({ data: u }) => {
+      if (!active || version !== initialVersion) return;
+      const current = u.user ? (await sb.auth.getSession()).data.session : null;
+      if (!active || version !== initialVersion) return;
+      setSession(current); setReady(true);
+    }).catch(() => { if (active && version === initialVersion) { setSession(null); setReady(true); } });
+    return () => { active = false; data.subscription.unsubscribe(); };
   }, []);
 
   if (!ready) return <Shell><p className="text-muted-foreground">Loading…</p></Shell>;
 
-  if (allowDemoWithoutAuth) return <>{children({ email: null, signOut: null })}</>;
+  if (allowDemoWithoutAuth) return <>{children({ userId: "dev-only", email: null, signOut: null })}</>;
 
   if (!supabaseConfigured)
     return (
@@ -39,7 +48,7 @@ export function AuthGate({ children }: { children: (ctx: { email: string | null;
     );
 
   if (session)
-    return <>{children({ email: session.user.email ?? null, signOut: () => void getSupabase()?.auth.signOut() })}</>;
+    return <>{children({ userId: session.user.id, email: session.user.email ?? null, signOut: () => { setSession(null); void getSupabase()?.auth.signOut(); } })}</>;
 
   return (
     <Shell>

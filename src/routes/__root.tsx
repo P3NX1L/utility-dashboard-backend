@@ -12,7 +12,9 @@ import { useEffect, type ReactNode } from "react";
 import appCss from "../styles.css?url";
 import paletteCss from "../styles/first-western-palette.css?url";
 import { Outlet } from "@tanstack/react-router";
-import { SiteHeader } from "../components/layout/SiteHeader";
+import { NoticeShell } from "../components/layout/NoticeShell";
+import { AuthGate } from "../components/notices/AuthGate";
+import { ExportSessionProvider } from "../components/notices/ExportSession";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 
 function NotFoundComponent() {
@@ -125,10 +127,7 @@ function RootShell({ children }: { children: ReactNode }) {
 function RootComponent() {
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <SiteHeader />
-      <main>
-        <Outlet />
-      </main>
+      <AuthGate>{({ userId, email, signOut }) => <ExportSessionProvider key={userId} userId={userId}><NoticeShell email={email} signOut={signOut}><Outlet /></NoticeShell></ExportSessionProvider>}</AuthGate>
     </div>
   );
 }

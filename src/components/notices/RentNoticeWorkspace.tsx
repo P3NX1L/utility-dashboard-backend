@@ -1,13 +1,13 @@
-import { lazy, Suspense, useCallback, useRef, useState, type ReactNode } from "react";
-import { Upload, Download, FileText, ChevronLeft, ChevronRight, ChevronDown, Search } from "lucide-react";
+import { useRef, useState, type ReactNode } from "react";
+import { Upload, FileText, ChevronDown, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { formatUSD } from "@/lib/notices/numberToWords";
 import { chicagoToday, eligible, noticeIssues, parseAppFolioCsv, selectedNoticeInputs, type PropertyGroup, type RentBatch, type RentTenant } from "@/lib/notices/fiveDay";
 import { buildRentBatch, type GeneratedBatch } from "@/lib/notices/fiveDayPdf";
+import { ReviewedExport } from "./ReviewedExport";
 
-const PdfPreview = lazy(() => import("./OfficePdfPreview"));
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return <label className="block min-w-0 space-y-1.5 text-sm"><span className="font-medium">{label}</span>{children}</label>;
 }
@@ -22,10 +22,8 @@ export function RentNoticeWorkspace() {
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [generated, setGenerated] = useState<GeneratedBatch | null>(null);
-  const [previewIndex, setPreviewIndex] = useState(0);
-  const [viewed, setViewed] = useState<string[]>([]);
   const revision = useRef(0), uploadVersion = useRef(0);
-  const invalidate = () => { revision.current++; setGenerated(null); setViewed([]); setError(""); };
+  const invalidate = () => { revision.current++; setGenerated(null); setError(""); };
   const updateTenant = (id: string, patch: Partial<RentTenant>) => {
     invalidate(); setBatch((b) => ({ ...b, tenants: b.tenants.map((t) => t.id === id ? { ...t, ...patch } : t) }));
   };
@@ -66,22 +64,13 @@ export function RentNoticeWorkspace() {
   const issues = inputs.flatMap((input) => noticeIssues(input).map((message) => `${input.tenant.name}: ${message}`));
   const generate = async () => {
     const version = revision.current;
-    setBusy(true); setError(""); setGenerated(null); setViewed([]);
+    setBusy(true); setError(""); setGenerated(null);
     try {
       const result = await buildRentBatch(inputs);
       if (version !== revision.current) return;
-      setGenerated(result); setPreviewIndex(0);
+      setGenerated(result);
     } catch (e) { if (version === revision.current) setError(e instanceof Error ? e.message : "Unable to generate notices. No ZIP was created."); }
     finally { setBusy(false); }
-  };
-  const markViewed = useCallback((id: string) => setViewed((ids) => ids.includes(id) ? ids : [...ids, id]), []);
-  const currentPdf = generated?.notices[previewIndex];
-  const allViewed = Boolean(generated && generated.notices.every((n) => viewed.includes(n.id)));
-  const download = () => {
-    if (!generated || !allViewed) return;
-    const url = URL.createObjectURL(generated.zip);
-    const a = document.createElement("a"); a.href = url; a.download = `5-Day_Notices_${issueDate}.zip`; a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
   return <div className="mt-6 space-y-6">
     <div className="flex flex-wrap items-center justify-between gap-3 border-y border-border py-4">
@@ -148,13 +137,7 @@ export function RentNoticeWorkspace() {
         </div> : <p className="border-y border-dashed py-6 text-sm text-muted-foreground">No tenants selected.</p>}
         {issues.length > 0 && <div role="status" className="space-y-1 text-xs text-destructive">{[...new Set(issues)].slice(0, 6).map((issue) => <p key={issue}>{issue}</p>)}{issues.length > 6 && <p>Review all {issues.length} missing or invalid fields before generating.</p>}</div>}
         <Button className="w-full" disabled={!selected.length || issues.length > 0 || busy || uploading} onClick={() => void generate()}><FileText className="size-4" />{busy ? "Generating complete batch…" : `Generate & preview ${selected.length || ""} notice${selected.length === 1 ? "" : "s"}`}</Button>
-        {generated && currentPdf && <div className="space-y-3 border-t border-border pt-5">
-          <div className="flex items-center justify-between gap-2"><h3 className="text-sm font-semibold">PDF preview {previewIndex + 1} of {generated.notices.length}</h3><div className="flex gap-1"><Button variant="outline" size="icon" aria-label="Previous PDF" disabled={previewIndex === 0} onClick={() => setPreviewIndex((i) => i - 1)}><ChevronLeft className="size-4" /></Button><Button variant="outline" size="icon" aria-label="Next PDF" disabled={previewIndex >= generated.notices.length - 1} onClick={() => setPreviewIndex((i) => i + 1)}><ChevronRight className="size-4" /></Button></div></div>
-          <p className="break-all text-xs text-muted-foreground">{currentPdf.filename}</p>
-          <Suspense fallback={<p className="text-sm text-muted-foreground">Loading PDF preview…</p>}><PdfPreview key={currentPdf.id} bytes={currentPdf.bytes} id={currentPdf.id} onRendered={markViewed} /></Suspense>
-          <p className="text-xs text-muted-foreground">{viewed.length} of {generated.notices.length} previews viewed. Review every PDF before download. Any edit or selection change clears this batch.</p>
-          <Button className="w-full" disabled={!allViewed} onClick={download}><Download className="size-4" />Download ZIP · {generated.notices.length} PDFs</Button>
-        </div>}
+        {generated && <ReviewedExport key={revision.current} notices={generated.notices} tenants={selected.map((t) => t.name)} kind="five-day" />}
       </section>
     </div>}
   </div>;

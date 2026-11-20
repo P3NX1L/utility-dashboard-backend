@@ -11,6 +11,12 @@ services:
         sync: false
     routes:
       - type: rewrite
+        source: /five-day/exports
+        destination: /five-day/exports/index.html
+      - type: rewrite
+        source: /access/exports
+        destination: /access/exports/index.html
+      - type: rewrite
         source: /five-day
         destination: /five-day/index.html
       - type: rewrite

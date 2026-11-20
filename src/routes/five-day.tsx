@@ -1,8 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { BackLink, container } from "@/components/layout/SiteHeader";
-import { AuthGate } from "@/components/notices/AuthGate";
 import { RentNoticeWorkspace } from "@/components/notices/RentNoticeWorkspace";
-import { Button } from "@/components/ui/button";
 
 export const Route = createFileRoute("/five-day")({
   head: () => ({
@@ -21,13 +18,9 @@ export const Route = createFileRoute("/five-day")({
 
 function FiveDayPage() {
   return (
-    <div className={`${container} py-8 sm:py-10`}>
-      <BackLink />
-      <h1 className="mt-4 text-2xl font-semibold text-foreground">5-Day Notices</h1>
-      <AuthGate>{({ email, signOut }) => <>
-        {signOut && <div className="mt-3 flex flex-wrap items-center justify-end gap-3 text-sm text-muted-foreground"><span>{email}</span><Button variant="ghost" size="sm" onClick={signOut}>Sign out</Button></div>}
+    <div>
+      <h1 className="text-3xl font-semibold text-foreground">5-Day Notices</h1>
         <RentNoticeWorkspace />
-      </>}</AuthGate>
     </div>
   );
 }
