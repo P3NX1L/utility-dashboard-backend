@@ -8,7 +8,23 @@ import { saveExport, listExports } from "@/lib/notices/exports";
 const download = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/notices/exports", async (original) => ({ ...await original<typeof import("@/lib/notices/exports")>(), downloadExport: download }));
 beforeEach(() => { globalThis.indexedDB = new IDBFactory(); });
-afterEach(() => { cleanup(); vi.clearAllMocks(); });
+afterEach(() => { cleanup(); vi.clearAllMocks(); vi.restoreAllMocks(); });
+it("requires tenant-named confirmation and persists only confirmed deletion", async () => {
+  await saveExport("staff-a", { id: "one", userId: "staff-a", kind: "five-day", createdAt: "2026-11-20T21:21:00Z", tenants: ["Synthetic Sam"], count: 1, filename: "sam.pdf", blob: new Blob(["%PDF-synthetic"], { type: "application/pdf" }) });
+  const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+  const open = () => render(<ExportSessionProvider userId="staff-a"><ExportHistory kind="five-day" /></ExportSessionProvider>);
+  const view = open();
+  fireEvent.click(await screen.findByRole("button", { name: "Delete notice for Synthetic Sam" }));
+  expect(confirm).toHaveBeenCalledWith("Delete the notice for Synthetic Sam? This cannot be undone.");
+  expect(await listExports("staff-a", "five-day")).toHaveLength(1);
+  confirm.mockReturnValue(true);
+  fireEvent.click(screen.getByRole("button", { name: "Delete notice for Synthetic Sam" }));
+  await waitFor(() => expect(screen.queryByText("Synthetic Sam")).toBeNull());
+  expect(await listExports("staff-a", "five-day")).toHaveLength(0);
+  view.unmount(); open();
+  await waitFor(() => expect(screen.queryByText("Loading exports…")).toBeNull());
+  expect(screen.queryByText("Synthetic Sam")).toBeNull();
+});
 it("initiates PDF download before persisting downloaded state, restores it, and permits re-download", async () => {
   await saveExport("staff-a", { id: "one", userId: "staff-a", kind: "five-day", createdAt: "2026-11-20T21:21:00Z", tenants: ["Synthetic Sam"], count: 1, filename: "sam.pdf", blob: new Blob(["%PDF-synthetic"], { type: "application/pdf" }) });
   download.mockImplementation(() => { expect(screen.queryByRole("listitem", { name: "Synthetic Sam, downloaded" })).toBeNull(); });

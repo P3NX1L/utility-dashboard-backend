@@ -6,6 +6,7 @@ export interface ExportRecord {
   id: string; userId: string; kind: NoticeKind; createdAt: string;
   tenants: string[]; count: number; filename: string; blob: Blob;
   downloadedFiles?: string[];
+  deletedFiles?: string[];
 }
 export async function packageReviewed(notices: GeneratedNotice[], reviewed: string[], kind: NoticeKind) {
   if (!notices.length || notices.some((n) => !reviewed.includes(n.id))) throw new Error("Review every PDF before exporting.");
@@ -73,17 +74,43 @@ export async function individualFiveDayDownloads(records: ExportRecord[]): Promi
   const rows: NoticeDownload[] = [];
   for (const record of records) {
     const item = (filename: string, blob: Blob, index: number): NoticeDownload => ({ recordId: record.id, filename, blob, tenant: record.tenants[index] ?? filename, createdAt: record.createdAt, downloaded: record.downloadedFiles?.includes(filename) ?? false });
-    if (record.filename.toLowerCase().endsWith(".pdf")) rows.push(item(record.filename, record.blob, 0));
+    if (record.filename.toLowerCase().endsWith(".pdf") && !record.deletedFiles?.includes(record.filename)) rows.push(item(record.filename, record.blob, 0));
     else if (record.filename.toLowerCase().endsWith(".zip")) {
       const zip = await JSZip.loadAsync(await record.blob.arrayBuffer());
       const files = Object.values(zip.files).filter((file) => !file.dir && file.name.toLowerCase().endsWith(".pdf"));
       for (const [index, file] of files.entries()) {
+        if (record.deletedFiles?.includes(file.name)) continue;
         const bytes = await file.async("uint8array");
         rows.push(item(file.name, new Blob([new Uint8Array(bytes)], { type: "application/pdf" }), index));
       }
     }
   }
   return rows;
+}
+export function chicagoGenerationDate(createdAt: string): string {
+  return new Intl.DateTimeFormat("en-US", { timeZone: "America/Chicago", month: "2-digit", day: "2-digit", year: "numeric" }).format(new Date(createdAt));
+}
+/** Remove single PDFs; hide only the selected entry in legacy ZIPs, retaining sibling bytes and original tenant indices. */
+export async function deleteFiveDayNotice(userId: string, recordId: string, filename: string): Promise<void> {
+  if (!userId) throw new Error("A signed-in account is required.");
+  const db = await openHistory();
+  try { await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction("exports", "readwrite");
+    const store = tx.objectStore("exports");
+    const request = store.get([userId, recordId]);
+    request.onsuccess = () => {
+      const record = request.result as ExportRecord | undefined;
+      if (!record || record.userId !== userId || record.kind !== "five-day") { tx.abort(); return; }
+      if (record.filename.toLowerCase().endsWith(".pdf")) {
+        if (record.filename !== filename) { tx.abort(); return; }
+        store.delete([userId, recordId]);
+      } else {
+        store.put({ ...record, deletedFiles: [...new Set([...(record.deletedFiles ?? []), filename])] });
+      }
+    };
+    tx.oncomplete = () => resolve();
+    tx.onerror = tx.onabort = () => reject(new Error("Notice could not be deleted. Please try again."));
+  }); } finally { db.close(); }
 }
 export async function markNoticeDownloaded(userId: string, recordId: string, filename: string): Promise<void> {
   if (!userId) throw new Error("A signed-in account is required.");

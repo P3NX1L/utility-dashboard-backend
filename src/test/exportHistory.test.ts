@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import JSZip from "jszip";
 import { PDFDocument } from "pdf-lib";
 import { IDBFactory } from "fake-indexeddb";
-import { packageReviewed, saveExport, listExports, individualFiveDayDownloads, markNoticeDownloaded, type ExportRecord } from "@/lib/notices/exports";
+import { packageReviewed, saveExport, listExports, individualFiveDayDownloads, markNoticeDownloaded, deleteFiveDayNotice, chicagoGenerationDate, type ExportRecord } from "@/lib/notices/exports";
 import { buildRentBatch, buildSingleRentNotice } from "@/lib/notices/fiveDayPdf";
 import { parseAppFolioCsv } from "@/lib/notices/fiveDay";
 import { generateAccessNotices } from "@/lib/notices/accessPdf";
@@ -17,6 +17,34 @@ async function rentNotices() {
 const accessRow = { id: "access-1", names: "Synthetic Person", address: "1 Test St", unit: "A", entryDates: ["2026-11-25"], reason: "Inspection", selected: true, handedOff: false };
 beforeEach(() => { globalThis.indexedDB = new IDBFactory(); });
 describe("reviewed PDF and ZIP exports", () => {
+  it("uses the Chicago calendar and exactly MM/DD/YYYY without time", () => {
+    expect(chicagoGenerationDate("2026-11-21T02:00:00Z")).toBe("11/20/2026");
+    expect(chicagoGenerationDate("2026-07-01T04:00:00Z")).toBe("06/30/2026");
+  });
+  it("deletes only the current user's selected single PDF and preserves Access", async () => {
+    const base: ExportRecord = { id: "one", userId: "staff-a", kind: "five-day", createdAt: "2026-11-20T17:00:00Z", count: 1, tenants: ["Synthetic Alex"], filename: "one.pdf", blob: new Blob(["%PDF-synthetic"], { type: "application/pdf" }) };
+    await saveExport("staff-a", base);
+    await saveExport("staff-b", { ...base, userId: "staff-b" });
+    await saveExport("staff-a", { ...base, id: "access", kind: "access" });
+    await deleteFiveDayNotice("staff-a", "one", "one.pdf");
+    expect(await listExports("staff-a", "five-day")).toHaveLength(0);
+    expect(await listExports("staff-b", "five-day")).toHaveLength(1);
+    await expect(deleteFiveDayNotice("staff-a", "access", "one.pdf")).rejects.toThrow("could not be deleted");
+    expect(await listExports("staff-a", "access")).toHaveLength(1);
+  });
+  it("persists deletion of one legacy entry without changing sibling name, bytes or downloaded state", async () => {
+    const first = (await rentNotices())[0]; if (!first) throw new Error("Missing PDF");
+    const two = [first, { ...first, id: "second", filename: "second.pdf" }];
+    const output = await packageReviewed(two, two.map((n) => n.id), "five-day");
+    await saveExport("staff-a", { ...output, id: "legacy", userId: "staff-a", kind: "five-day", createdAt: "2026-11-20T17:00:00Z", count: 2, tenants: ["Synthetic Alex", "Synthetic Sam"], downloadedFiles: ["second.pdf"] });
+    await deleteFiveDayNotice("staff-a", "legacy", first.filename);
+    const rows = await individualFiveDayDownloads(await listExports("staff-a", "five-day"));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.tenant).toBe("Synthetic Sam");
+    expect(rows[0]?.downloaded).toBe(true);
+    const sibling = rows[0]; if (!sibling) throw new Error("Missing sibling");
+    expect(new Uint8Array(await sibling.blob.arrayBuffer())).toEqual(first.bytes);
+  });
   it("active five-day generation rejects zero or two tenants at the boundary", async () => {
     const tenant = parseAppFolioCsv(csv).tenants[0]; if (!tenant) throw new Error("Missing fixture");
     const input = { tenant, owner: "Synthetic LLC", agent: "Aahil Penwalla", issueDate: "2025-04-14" };
