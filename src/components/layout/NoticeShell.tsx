@@ -1,6 +1,6 @@
 import { Link, useLocation } from "@tanstack/react-router";
 import { useEffect, useState, type ReactNode } from "react";
-import { FileText, KeyRound, ChevronDown, Menu, LogOut } from "lucide-react";
+import { FileText, Mail, KeyRound, ChevronDown, Menu, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const logo = "https://1stwesterndashboard.xyz/__l5e/assets-v1/df0c4a52-40e0-4ec9-a986-8bbe34942c8d/first-western-logo-hd.png";
@@ -15,7 +15,7 @@ export function NoticeShell({ children, email, signOut }: { children: ReactNode;
   const navigation = (prefix: string) => <nav aria-label="Notice navigation" className="flex flex-1 flex-col gap-2 p-3">
     {(["five-day", "access"] as const).map((kind) => {
       const isAccess = kind === "access", active = isAccess === access;
-      const Icon = isAccess ? KeyRound : FileText;
+      const Icon = isAccess ? KeyRound : Mail;
       return <div key={kind}>
         <button type="button" aria-expanded={expanded[kind]} aria-controls={`${prefix}-${kind}`} onClick={() => setExpanded((old) => ({ ...old, [kind]: !old[kind] }))} className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-semibold transition-colors hover:bg-sidebar-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"><Icon className="size-[22px] shrink-0 text-primary" /><span className="flex-1 text-left">{isAccess ? "Access Notice" : "5-Day Notice"}</span><ChevronDown className={`size-4 shrink-0 transition-transform motion-reduce:transition-none ${expanded[kind] ? "" : "-rotate-90"}`} /></button>
         {expanded[kind] && <div id={`${prefix}-${kind}`} className="mt-2 ml-3 flex flex-col gap-5 border-l border-sidebar-border pl-2">
