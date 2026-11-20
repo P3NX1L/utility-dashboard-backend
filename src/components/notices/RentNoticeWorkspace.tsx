@@ -1,6 +1,6 @@
-import { useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { Upload, FileText, ChevronDown, Search } from "lucide-react";
+import { Upload, FileText, ChevronDown, Search, LoaderCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -29,7 +29,15 @@ export function RentNoticeWorkspace() {
   const dragDepth = useRef(0);
   const [generated, setGenerated] = useState<Pick<GeneratedBatch, "notices"> | null>(null);
   const [generatedAt, setGeneratedAt] = useState("");
+  const preview = useRef<HTMLDivElement>(null);
+  const generationLock = useRef(false);
   const revision = useRef(0), uploadVersion = useRef(0);
+  useEffect(() => () => { revision.current++; uploadVersion.current++; }, []);
+  useEffect(() => {
+    if (!generated || !preview.current) return;
+    preview.current.focus({ preventScroll: true });
+    preview.current.scrollIntoView({ behavior: "instant", block: "start" });
+  }, [generated]);
   const invalidate = () => { revision.current++; setGenerated(null); setError(""); };
   const updateTenant = (id: string, patch: Partial<RentTenant>) => {
     invalidate(); setBatch((b) => ({ ...b, tenants: b.tenants.map((t) => t.id === id ? { ...t, ...patch } : t) }));
@@ -72,18 +80,34 @@ export function RentNoticeWorkspace() {
   const properties = batch.properties.filter((p) => selected.some((t) => t.propertyId === p.id));
   const inputs = selectedNoticeInputs(batch, issueDate);
   const issues = inputs.flatMap((input) => noticeIssues(input).map((message) => `${input.tenant.name}: ${message}`));
+  const validation = selected.length !== 1 ? ["Choose one tenant with positive delinquent rent from the tenant list."] : [...new Set(issues)];
   const generate = async () => {
-    if (busy || uploading) return;
-    if (inputs.length !== 1 || !inputs[0] || !eligible(inputs[0].tenant)) { setError("Select exactly one eligible tenant."); return; }
+    if (generationLock.current || uploading) return;
+    if (inputs.length !== 1 || !inputs[0] || !eligible(inputs[0].tenant)) { setError("Choose exactly one tenant with positive delinquent rent from the tenant list, then try again."); return; }
+    if (issues.length) { setError(`Complete the required fields before generating: ${[...new Set(issues)].join(" ")}`); return; }
     const version = revision.current;
+    generationLock.current = true;
     setBusy(true); setError(""); setGenerated(null);
     try {
+      // Let the generating state paint before PDF work can occupy the main thread.
+      await new Promise<void>((resolve) => {
+        if (typeof requestAnimationFrame === "function") requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+        else setTimeout(resolve, 0);
+      });
+      if (version !== revision.current) return;
       const result = await buildSingleRentNotice(inputs);
       if (version !== revision.current) return;
       setGenerated(result);
       setGeneratedAt(new Date().toISOString());
-    } catch (e) { if (version === revision.current) setError(e instanceof Error ? e.message : "Unable to generate notice."); }
-    finally { setBusy(false); }
+    } catch (e) {
+      if (version !== revision.current) return;
+      const detail = e instanceof Error ? e.message : "Unable to generate notice.";
+      setError(/fetch|heading|network/i.test(detail)
+        ? `${detail} Check your connection, then click Generate & preview again.`
+        : /encode/i.test(detail)
+          ? `${detail} Replace unsupported characters in the name, address, owner or signer, then try again.`
+          : `${detail} Review the fields above, then try again.`);
+    } finally { generationLock.current = false; setBusy(false); }
   };
   return <div className="mt-6 space-y-6">
     {!fileName && <div className="space-y-3">
@@ -109,7 +133,7 @@ export function RentNoticeWorkspace() {
       </div>
     </div>}
     <input ref={fileInput} type="file" accept=".csv,text/csv" aria-label="Upload AppFolio CSV" className="sr-only" tabIndex={-1} disabled={uploading || busy} onChange={(e) => { void load(Array.from(e.target.files ?? [])); e.target.value = ""; }} />
-    {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+    {error && batch.tenants.length === 0 && <p role="alert" className="text-sm text-destructive">{error}</p>}
     {fileName && batch.tenants.length === 0 && !uploading && <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-card px-3 py-2">
       <p className="min-w-0 break-all text-sm text-muted-foreground">{fileName} · 0 tenants found in this report.</p>
       <Button type="button" variant="ghost" size="sm" title={fileName} aria-label={`Replace CSV (current file: ${fileName})`} disabled={uploading || busy} onClick={() => fileInput.current?.click()}><Upload aria-hidden="true" className="size-4" />Replace CSV</Button>
@@ -165,9 +189,17 @@ export function RentNoticeWorkspace() {
           <Field label="City · Cook County, Illinois"><Input aria-label="City" value={active.city} onChange={(e) => updateTenant(active.id, { city: e.target.value })} /></Field>
           <p className="text-sm">Rent demand: <strong>{formatUSD(active.rent)}</strong><span className="text-muted-foreground"> · Other charges excluded: {formatUSD(active.other)}</span></p>
         </div> : <p className="border-y border-dashed py-6 text-sm text-muted-foreground">No tenants selected.</p>}
-        {issues.length > 0 && <div role="status" className="space-y-1 text-xs text-destructive">{[...new Set(issues)].slice(0, 6).map((issue) => <p key={issue}>{issue}</p>)}{issues.length > 6 && <p>Review all {issues.length} missing or invalid fields before generating.</p>}</div>}
-        <Button className="w-full" disabled={selected.length !== 1 || issues.length > 0 || busy || uploading} onClick={() => void generate()}><FileText className="size-4" />{busy ? "Generating notice…" : `Generate & preview ${selected.length || ""} notice`}</Button>
-        {generated && <ReviewedExport key={revision.current} notices={generated.notices} tenants={selected.map((t) => t.name)} kind="five-day" generatedAt={generatedAt} onSaved={() => void navigate({ to: "/five-day/exports" })} />}
+        <div className="space-y-2" aria-busy={busy}>
+          <div id="rent-generation-feedback" aria-live="polite" aria-atomic="true" className="space-y-1 text-sm">
+            {busy ? <p role="status" className="text-muted-foreground">Generating your PDF…</p>
+              : error ? <p role="alert" className="break-words text-destructive">{error}</p>
+              : validation.length > 0 ? <div className="space-y-1 text-destructive">{validation.map((issue) => <p key={issue}>{issue}</p>)}</div> : null}
+          </div>
+          <Button className="w-full" aria-describedby="rent-generation-feedback" disabled={busy || uploading} onClick={() => void generate()}>{busy ? <LoaderCircle aria-hidden="true" className="size-4 animate-spin motion-reduce:animate-none" /> : <FileText aria-hidden="true" className="size-4" />}{busy ? "Generating notice…" : `Generate & preview ${selected.length || ""} notice`}</Button>
+        </div>
+        {generated && <div ref={preview} role="region" aria-label="Generated 5-Day notice preview" tabIndex={-1} className="scroll-mt-4 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <ReviewedExport key={revision.current} notices={generated.notices} tenants={selected.map((t) => t.name)} kind="five-day" generatedAt={generatedAt} onSaved={() => void navigate({ to: "/five-day/exports" })} />
+        </div>}
       </section>
     </div>}
   </div>;
