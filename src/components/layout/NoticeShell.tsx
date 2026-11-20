@@ -11,16 +11,16 @@ export function NoticeShell({ children, email, signOut }: { children: ReactNode;
   const [expanded, setExpanded] = useState({ "five-day": !access, access });
   const [mobileOpen, setMobileOpen] = useState(false);
   useEffect(() => { setExpanded((old) => ({ ...old, [access ? "access" : "five-day"]: true })); setMobileOpen(false); }, [path, access]);
-  const linkClass = "block rounded-md px-3 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  const linkClass = "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-normal focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
   const navigation = (prefix: string) => <nav aria-label="Notice navigation" className="flex flex-1 flex-col gap-2 p-3">
     {(["five-day", "access"] as const).map((kind) => {
       const isAccess = kind === "access", active = isAccess === access;
       const Icon = isAccess ? KeyRound : FileText;
       return <div key={kind}>
-        <Button variant="ghost" aria-expanded={expanded[kind]} aria-controls={`${prefix}-${kind}`} onClick={() => setExpanded((old) => ({ ...old, [kind]: !old[kind] }))} className="flex h-auto w-full items-center justify-start gap-3 rounded-md px-3 py-2 text-sm font-semibold"><Icon className="size-5 shrink-0 text-primary" /><span className="flex-1 text-left">{isAccess ? "Access Notice" : "5-Day Notice"}</span><ChevronDown className={`size-4 shrink-0 transition-transform motion-reduce:transition-none ${expanded[kind] ? "rotate-180" : ""}`} /></Button>
+        <Button variant="ghost" aria-expanded={expanded[kind]} aria-controls={`${prefix}-${kind}`} onClick={() => setExpanded((old) => ({ ...old, [kind]: !old[kind] }))} className="flex h-auto w-full items-center justify-start gap-3 rounded-md px-3 py-2 text-sm font-semibold"><Icon className="size-5 shrink-0 text-primary" /><span className="flex-1 text-left font-semibold">{isAccess ? "Access Notice" : "5-Day Notice"}</span><ChevronDown className={`size-4 shrink-0 transition-transform motion-reduce:transition-none ${expanded[kind] ? "rotate-180" : ""}`} /></Button>
         {expanded[kind] && <div id={`${prefix}-${kind}`} className="mt-2 ml-3 space-y-1 border-l border-sidebar-border pl-2">
-          <Link to={isAccess ? "/access" : "/five-day"} onClick={() => setMobileOpen(false)} className={`${linkClass} ${active && !exports ? "bg-accent text-primary" : "hover:bg-muted"}`} aria-current={active && !exports ? "page" : undefined}>Generate Notice</Link>
-          <Link to={isAccess ? "/access/exports" : "/five-day/exports"} onClick={() => setMobileOpen(false)} className={`${linkClass} ${active && exports ? "bg-accent text-primary" : "hover:bg-muted"}`} aria-current={active && exports ? "page" : undefined}>Exports</Link>
+          <Link to={isAccess ? "/access" : "/five-day"} onClick={() => setMobileOpen(false)} className={`${linkClass} ${active && !exports ? "bg-accent text-primary" : "hover:bg-muted"}`} aria-current={active && !exports ? "page" : undefined}><FileText aria-hidden="true" className="size-4 shrink-0 text-primary" /><span>Generate Notice</span></Link>
+          <Link to={isAccess ? "/access/exports" : "/five-day/exports"} onClick={() => setMobileOpen(false)} className={`${linkClass} ${active && exports ? "bg-accent text-primary" : "hover:bg-muted"}`} aria-current={active && exports ? "page" : undefined}><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="size-4 shrink-0 text-primary"><path d="M12 3v12" /><path d="m7 10 5 5 5-5" /><path d="M3.5 16.5v2.5a2 2 0 0 0 2 2h13a2 2 0 0 0 2-2v-2.5" /></svg><span>Exports</span></Link>
         </div>}
       </div>;
     })}
