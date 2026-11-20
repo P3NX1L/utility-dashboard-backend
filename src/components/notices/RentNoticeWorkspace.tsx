@@ -82,7 +82,7 @@ export function RentNoticeWorkspace() {
     finally { setBusy(false); }
   };
   return <div className="mt-6 space-y-6">
-    <div className="space-y-3">
+    {!fileName && <div className="space-y-3">
       <h2 className="text-base font-semibold">AppFolio delinquency report</h2>
       <div role="region" aria-label="CSV drop area" aria-busy={uploading}
         onDragEnter={(e) => { e.preventDefault(); dragDepth.current++; if (!uploading && !busy) setDragging(true); }}
@@ -102,10 +102,14 @@ export function RentNoticeWorkspace() {
             : <span className="text-sm text-muted-foreground">Drop your CSV here or <span className="text-primary">browse files</span></span>}
           {!fileName && !uploading && !dragging && <span className="text-xs text-muted-foreground">CSV up to 10 MB</span>}
         </Button>
-        <input ref={fileInput} type="file" accept=".csv,text/csv" aria-label="Upload AppFolio CSV" className="sr-only" tabIndex={-1} disabled={uploading || busy} onChange={(e) => { void load(Array.from(e.target.files ?? [])); e.target.value = ""; }} />
       </div>
-    </div>
+    </div>}
+    <input ref={fileInput} type="file" accept=".csv,text/csv" aria-label="Upload AppFolio CSV" className="sr-only" tabIndex={-1} disabled={uploading || busy} onChange={(e) => { void load(Array.from(e.target.files ?? [])); e.target.value = ""; }} />
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+    {fileName && batch.tenants.length === 0 && !uploading && <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-card px-3 py-2">
+      <p className="min-w-0 break-all text-sm text-muted-foreground">{fileName} · 0 tenants found in this report.</p>
+      <Button type="button" variant="ghost" size="sm" title={fileName} aria-label={`Replace CSV (current file: ${fileName})`} disabled={uploading || busy} onClick={() => fileInput.current?.click()}><Upload aria-hidden="true" className="size-4" />Replace CSV</Button>
+    </div>}
     {batch.tenants.length > 0 && <div className="grid items-start gap-7 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
       <section aria-label="Tenant checklist" className="min-w-0">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -135,7 +139,10 @@ export function RentNoticeWorkspace() {
         </div>
       </section>
       <section aria-label="Review selected notices" className="min-w-0 space-y-5">
-        <h2 className="font-semibold">Review & prepare</h2>
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="font-semibold">Review & prepare</h2>
+          <Button type="button" variant="ghost" size="sm" title={fileName} aria-label={`Replace CSV (current file: ${fileName})`} disabled={uploading || busy} onClick={() => fileInput.current?.click()}><Upload aria-hidden="true" className="size-4" />Replace CSV</Button>
+        </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Issue date · Chicago"><Input aria-label="Issue date" type="date" value={issueDate} onChange={(e) => { invalidate(); setIssueDate(e.target.value); }} /></Field>
         </div>
