@@ -100,3 +100,10 @@ export function uniquePdfNames(inputs: NoticeInput[]): string[] {
     used.add(name.toLowerCase()); return name;
   });
 }
+/** Fill blank owners from the saved owner mapping, matching the report's property name (case-insensitive). */
+export function applyOwnerDirectory(properties: PropertyGroup[], rows: { property_name: string; legal_owner: string }[]): PropertyGroup[] {
+  const key = (s: string) => s.trim().replace(/\s+/g, " ").toLowerCase();
+  const owners = new Map<string, string>();
+  for (const r of rows) { owners.set(key(r.property_name), r.legal_owner); const short = r.property_name.split(" - ")[0]; if (short) { const k = key(short); if (!owners.has(k)) owners.set(k, r.legal_owner); } }
+  return properties.map((p) => p.owner.trim() ? p : { ...p, owner: owners.get(key(p.label)) ?? "" });
+}

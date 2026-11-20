@@ -5,15 +5,31 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { formatUSD } from "@/lib/notices/numberToWords";
-import { chicagoToday, eligible, noticeIssues, parseAppFolioCsv, selectedNoticeInputs, type PropertyGroup, type RentBatch, type RentTenant } from "@/lib/notices/fiveDay";
+import { applyOwnerDirectory, chicagoToday, eligible, noticeIssues, parseAppFolioCsv, selectedNoticeInputs, type PropertyGroup, type RentBatch, type RentTenant } from "@/lib/notices/fiveDay";
 import { buildSingleRentNotice, type GeneratedBatch } from "@/lib/notices/fiveDayPdf";
 import { ReviewedExport } from "./ReviewedExport";
+import { getSupabase } from "@/lib/supabase";
+import { readLegalOwnerDirectory } from "@/lib/notices/legalOwnerMapping";
+import { readReportSource, saveReportSource } from "@/lib/notices/reportSource";
+import { useExportUser } from "./ExportSession";
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return <label className="block min-w-0 space-y-1.5 text-sm"><span className="font-medium">{label}</span>{children}</label>;
 }
 
 export function RentNoticeWorkspace() {
+  const userId = useExportUser();
+  return <AccountRentWorkspace key={userId ?? "unscoped"} userId={userId} />;
+}
+
+async function parseCurrentReport(csv: string) {
+  const parsed = parseAppFolioCsv(csv);
+  const client = getSupabase();
+  if (client) { try { parsed.properties = applyOwnerDirectory(parsed.properties, await readLegalOwnerDirectory(client)); } catch { /* owner mapping unavailable: enter owners manually */ } }
+  return parsed;
+}
+
+function AccountRentWorkspace({ userId }: { userId: string | null }) {
   const navigate = useNavigate();
   const [batch, setBatch] = useState<RentBatch>({ properties: [], tenants: [] });
   const [fileName, setFileName] = useState("");
@@ -21,9 +37,13 @@ export function RentNoticeWorkspace() {
   const [issueDate, setIssueDate] = useState(chicagoToday);
   const [activeId, setActiveId] = useState("");
   const [error, setError] = useState("");
+  const [uploadError, setUploadError] = useState("");
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [dragging, setDragging] = useState(false);
+  const [restoring, setRestoring] = useState(false);
+  const uploadAbort = useRef<AbortController | null>(null);
+  const restoreCancelled = useRef(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const uploadLock = useRef(false);
   const dragDepth = useRef(0);
@@ -32,7 +52,22 @@ export function RentNoticeWorkspace() {
   const preview = useRef<HTMLDivElement>(null);
   const generationLock = useRef(false);
   const revision = useRef(0), uploadVersion = useRef(0);
-  useEffect(() => () => { revision.current++; uploadVersion.current++; }, []);
+  useEffect(() => {
+    let active = true;
+    restoreCancelled.current = false;
+    if (userId) {
+      setRestoring(true);
+      void readReportSource(userId).then(async (source) => {
+        if (!source || !active || restoreCancelled.current) return;
+        const parsed = await parseCurrentReport(source.csv);
+        if (!active || restoreCancelled.current) return;
+        setBatch(parsed); setFileName(source.filename);
+      }).catch((e: unknown) => {
+        if (active && !restoreCancelled.current) setUploadError(e instanceof Error ? e.message : "Your saved report could not be restored.");
+      }).finally(() => { if (active) setRestoring(false); });
+    }
+    return () => { active = false; revision.current++; uploadVersion.current++; uploadAbort.current?.abort(); };
+  }, [userId]);
   useEffect(() => {
     if (!generated || !preview.current) return;
     preview.current.focus({ preventScroll: true });
@@ -56,16 +91,22 @@ export function RentNoticeWorkspace() {
     if (uploadLock.current || busy || files.length === 0) return;
     uploadLock.current = true;
     const version = ++uploadVersion.current;
-    invalidate(); setUploading(true);
+    const controller = new AbortController();
+    uploadAbort.current = controller;
+    setUploadError(""); setRestoring(false); setUploading(true);
     try {
       const file = files[0];
       if (files.length !== 1 || !file) throw new Error("Please upload exactly one .csv file.");
       if (!file.name.toLowerCase().endsWith(".csv")) throw new Error("Please upload a .csv file.");
       if (file.size > 10 * 1024 * 1024) throw new Error("The CSV exceeds 10 MB.");
-      const parsed = parseAppFolioCsv(await file.text());
+      const csv = await file.text();
+      const parsed = await parseCurrentReport(csv);
       if (version !== uploadVersion.current) return;
-      setBatch(parsed); setFileName(file.name); setActiveId(""); setSearch("");
-    } catch (e) { if (version === uploadVersion.current) setError(e instanceof Error ? e.message : "Unable to read CSV."); }
+      if (userId) await saveReportSource(userId, file.name, csv, controller.signal);
+      if (version !== uploadVersion.current) return;
+      restoreCancelled.current = true;
+      invalidate(); setBatch(parsed); setFileName(file.name); setActiveId(""); setSearch(""); setIssueDate(chicagoToday());
+    } catch (e) { if (version === uploadVersion.current) setUploadError(e instanceof Error ? e.message : "Unable to read CSV."); }
     finally { uploadLock.current = false; if (version === uploadVersion.current) setUploading(false); }
   };
   const selected = batch.tenants.filter((t) => t.selected);
@@ -110,6 +151,7 @@ export function RentNoticeWorkspace() {
     } finally { generationLock.current = false; setBusy(false); }
   };
   return <div className="mt-6 space-y-6">
+    {restoring && <p role="status" className="text-sm text-muted-foreground">Restoring saved report…</p>}
     {!fileName && <div className="space-y-3">
       <h2 className="text-base font-semibold">AppFolio delinquency report</h2>
       <div role="region" aria-label="CSV drop area" aria-busy={uploading}
@@ -133,10 +175,10 @@ export function RentNoticeWorkspace() {
       </div>
     </div>}
     <input ref={fileInput} type="file" accept=".csv,text/csv" aria-label="Upload AppFolio CSV" className="sr-only" tabIndex={-1} disabled={uploading || busy} onChange={(e) => { void load(Array.from(e.target.files ?? [])); e.target.value = ""; }} />
-    {error && batch.tenants.length === 0 && <p role="alert" className="text-sm text-destructive">{error}</p>}
+    {uploadError && batch.tenants.length === 0 && <p role="alert" className="text-sm text-destructive">{uploadError}</p>}
     {fileName && batch.tenants.length === 0 && !uploading && <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-card px-3 py-2">
       <p className="min-w-0 break-all text-sm text-muted-foreground">{fileName} · 0 tenants found in this report.</p>
-      <Button type="button" variant="ghost" size="sm" title={fileName} aria-label={`Replace CSV (current file: ${fileName})`} disabled={uploading || busy} onClick={() => fileInput.current?.click()}><Upload aria-hidden="true" className="size-4" />Replace CSV</Button>
+      <Button type="button" variant="ghost" size="sm" title={fileName} disabled={uploading || busy} onClick={() => fileInput.current?.click()}><Upload aria-hidden="true" className="size-4" />Update Delinquency</Button>
     </div>}
     {batch.tenants.length > 0 && <div className="grid items-start gap-7 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
       <section aria-label="Tenant checklist" className="min-w-0">
@@ -165,9 +207,14 @@ export function RentNoticeWorkspace() {
         </RadioGroup>
       </section>
       <section aria-label="Review selected notices" className="min-w-0 space-y-5">
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex flex-wrap items-start justify-between gap-2">
           <h2 className="font-semibold">Review & prepare</h2>
-          <Button type="button" variant="ghost" size="sm" title={fileName} aria-label={`Replace CSV (current file: ${fileName})`} disabled={uploading || busy} onClick={() => fileInput.current?.click()}><Upload aria-hidden="true" className="size-4" />Replace CSV</Button>
+          <div className="min-w-0 max-w-full text-right">
+            <Button type="button" variant="ghost" size="sm" title={fileName} disabled={uploading || busy} onClick={() => fileInput.current?.click()}><Upload aria-hidden="true" className="size-4" />Update Delinquency</Button>
+            <p className="max-w-64 break-all text-xs text-muted-foreground">{fileName} · {batch.tenants.length} tenant{batch.tenants.length === 1 ? "" : "s"}</p>
+            {uploading && <p role="status" className="text-xs text-muted-foreground">Reading CSV…</p>}
+            {uploadError && <p role="alert" className="max-w-64 break-words text-xs text-destructive">{uploadError}</p>}
+          </div>
         </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Issue date · Chicago"><Input aria-label="Issue date" type="date" value={issueDate} onChange={(e) => { invalidate(); setIssueDate(e.target.value); }} /></Field>

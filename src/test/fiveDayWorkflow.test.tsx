@@ -5,6 +5,7 @@ import { ExportSessionProvider } from "@/components/notices/ExportSession";
 import type { GeneratedBatch } from "@/lib/notices/fiveDayPdf";
 
 vi.mock("@tanstack/react-router", () => ({ useNavigate: () => vi.fn() }));
+vi.mock("@/lib/notices/reportSource", () => ({ readReportSource: async () => null, saveReportSource: async () => {} }));
 const generate = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/notices/fiveDayPdf", () => ({ buildSingleRentNotice: generate }));
 vi.mock("@/components/notices/OfficePdfPreview", async () => {
