@@ -3,7 +3,7 @@ import JSZip from "jszip";
 import headingUrl from "@/assets/five-day-heading.png?url";
 import { FIVE_DAY_OFFICE_TEMPLATE as template } from "./templates";
 import { integerToWords, formatUSD } from "./numberToWords";
-import { dateWording, noticeDisplayName, noticeIssues, uniquePdfNames, type NoticeInput } from "./fiveDay";
+import { dateWording, noticeIssues, uniquePdfNames, type NoticeInput } from "./fiveDay";
 
 export interface GeneratedNotice { id: string; filename: string; bytes: Uint8Array }
 export interface GeneratedBatch { notices: GeneratedNotice[]; zip: Blob }
@@ -68,7 +68,7 @@ export async function generateNoticePdf(input: NoticeInput, heading: Uint8Array)
   const art = template.heading;
   page.drawImage(image, { x: art.x, y: template.height - art.top - art.height, width: art.width, height: art.height });
   const t = input.tenant;
-  let nameExtra = drawWrapped(page, regular, bold, [{ text: noticeDisplayName(t.name), bold: true }], 95.3, 152, 444.7);
+  let nameExtra = drawWrapped(page, regular, bold, [{ text: t.name, bold: true }], 95.3, 152, 444.7);
   // The sample leaves room for two name lines before UNKNOWN OCCUPANTS.
   nameExtra = Math.max(0, nameExtra - 13.8);
   const amount = t.rent;

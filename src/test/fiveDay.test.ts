@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import JSZip from "jszip";
 import { PDFDocument, PDFName, PDFRawStream, decodePDFRawStream } from "pdf-lib";
-import { parseAppFolioCsv, parseProperty, eligible, dateWording, noticeDisplayName, noticeIssues, selectedNoticeInputs, type NoticeInput } from "@/lib/notices/fiveDay";
+import { parseAppFolioCsv, parseProperty, eligible, dateWording, noticeIssues, selectedNoticeInputs, type NoticeInput } from "@/lib/notices/fiveDay";
 import { buildRentBatch, demandWords } from "@/lib/notices/fiveDayPdf";
 import { FIVE_DAY_OFFICE_TEMPLATE } from "@/lib/notices/templates";
 
@@ -124,8 +124,6 @@ describe("office PDF and complete ZIP", () => {
     expect(resources?.get(PDFName.of("Font"))).toBeDefined();
     expect(FIVE_DAY_OFFICE_TEMPLATE.isDraft).toBe(false);
     const drawnText = [...operators.matchAll(/<([A-Fa-f0-9]+)> Tj/g)].map((m) => Buffer.from(m[1] ?? "", "hex").toString("latin1")).join("");
-    expect(drawnText).toContain("Alex M. Example"); // TO: prints natural order, not raw "Example, Alex M."
-    expect(drawnText).not.toContain("Example, Alex M.");
     expect(drawnText).toContain("Two thousand seventy and 05/100 dollars ($2,070.05)");
     expect(drawnText).not.toContain("$2,099.05");
     expect(drawnText).toContain("100-104 Test St - 106 Test St Unit #1, Chicago, IL 60601");
@@ -154,17 +152,3 @@ describe("office PDF and complete ZIP", () => {
     expect(first.bytes.length).toBeGreaterThan(1000);
   });
 });
-  it("prints the TO: name in natural order only on the notice", () => {
-    expect(noticeDisplayName("Stennis , Antonio")).toBe("Antonio Stennis");
-    expect(noticeDisplayName("Rivera, Angel S.")).toBe("Angel S. Rivera");
-    expect(noticeDisplayName("Garcia Lopez, Maria")).toBe("Maria Garcia Lopez");
-    expect(noticeDisplayName("Smith Jr., John")).toBe("John Smith Jr.");
-    expect(noticeDisplayName("O'Brien, Mary K")).toBe("Mary K O'Brien");
-    // Natural order, organizations, and ambiguous strings stay untouched.
-    expect(noticeDisplayName("Antonio Stennis")).toBe("Antonio Stennis");
-    expect(noticeDisplayName("1200 W 127th LLC")).toBe("1200 W 127th LLC");
-    expect(noticeDisplayName("Smith, John & Jane")).toBe("Smith, John & Jane");
-    expect(noticeDisplayName("Smith and Wesson, Pat")).toBe("Smith and Wesson, Pat");
-    expect(noticeDisplayName("Doe, John, Jr")).toBe("Doe, John, Jr");
-    expect(noticeDisplayName("  Rivera,   Angel  ")).toBe("Angel Rivera");
-  });
