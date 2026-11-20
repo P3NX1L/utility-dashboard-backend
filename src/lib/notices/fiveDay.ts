@@ -90,6 +90,19 @@ export function noticeIssues(input: NoticeInput): string[] {
   return issues;
 }
 
+/** Printed notice name only: flips AppFolio "Last, First M." to "First M. Last".
+ * Names without exactly one comma (natural order, organizations) and ambiguous
+ * multi-party strings are returned unchanged; source records are never altered. */
+export function noticeDisplayName(name: string): string {
+  const trimmed = name.trim().replace(/\s+/g, " ");
+  const parts = trimmed.split(",");
+  if (parts.length !== 2) return trimmed;
+  const last = (parts[0] ?? "").trim(), first = (parts[1] ?? "").trim();
+  if (!last || !first) return trimmed;
+  if (/[&]|\band\b/i.test(last) || /[&]|\band\b/i.test(first)) return trimmed;
+  return `${first} ${last}`;
+}
+
 export function uniquePdfNames(inputs: NoticeInput[]): string[] {
   const used = new Set<string>();
   const sanitize = (s: string) => s.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9_-]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 80) || "tenant";
