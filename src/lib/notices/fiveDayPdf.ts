@@ -7,6 +7,20 @@ import { dateWording, noticeIssues, uniquePdfNames, type NoticeInput } from "./f
 
 export interface GeneratedNotice { id: string; filename: string; bytes: Uint8Array }
 export interface GeneratedBatch { notices: GeneratedNotice[]; zip: Blob }
+/** The active 5-Day workflow permits exactly one eligible tenant, even if called outside the UI. */
+export async function buildSingleRentNotice(inputs: NoticeInput[]): Promise<Pick<GeneratedBatch, "notices">> {
+  if (inputs.length !== 1) throw new Error("Select exactly one eligible tenant.");
+  const input = inputs[0];
+  if (!input) throw new Error("Select exactly one eligible tenant.");
+  const issues = noticeIssues(input);
+  if (issues.length) throw new Error(`${input.tenant.name}: ${issues.join(" ")}`);
+  const response = await fetch(headingUrl);
+  if (!response.ok) throw new Error("The office heading could not be loaded. Try again.");
+  const filename = uniquePdfNames(inputs)[0];
+  if (!filename) throw new Error("Unable to assign a filename.");
+  const bytes = await generateNoticePdf(input, new Uint8Array(await response.arrayBuffer()));
+  return { notices: [{ id: input.tenant.id, filename, bytes }] };
+}
 export function demandWords(amount: number): string {
   const cents = Math.round(amount * 100);
   const words = integerToWords(Math.floor(cents / 100)).replace(/-/g, " ").toLowerCase();

@@ -6,7 +6,7 @@ import { AuthGate } from "@/components/notices/AuthGate";
 import type { ExportRecord } from "@/lib/notices/exports";
 import type { Session } from "@supabase/supabase-js";
 const mock = vi.hoisted(() => ({ list: vi.fn(), user: vi.fn(), session: vi.fn(), change: undefined as ((event: string, session: Session | null) => void) | undefined }));
-vi.mock("@/lib/notices/exports", () => ({ listExports: mock.list, downloadExport: vi.fn() }));
+vi.mock("@/lib/notices/exports", async (original) => ({ ...await original<typeof import("@/lib/notices/exports")>(), listExports: mock.list, downloadExport: vi.fn() }));
 vi.mock("@/lib/supabase", () => ({ supabaseConfigured: true, allowDemoWithoutAuth: false, getSupabase: () => ({ auth: {
   onAuthStateChange: (cb: typeof mock.change) => { mock.change = cb; return { data: { subscription: { unsubscribe: vi.fn() } } }; },
   getUser: mock.user, getSession: mock.session, signOut: vi.fn(),

@@ -1,0 +1,26 @@
+import "fake-indexeddb/auto";
+import { IDBFactory } from "fake-indexeddb";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { ExportHistory } from "@/components/notices/ExportHistory";
+import { ExportSessionProvider } from "@/components/notices/ExportSession";
+import { saveExport, listExports } from "@/lib/notices/exports";
+const download = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/notices/exports", async (original) => ({ ...await original<typeof import("@/lib/notices/exports")>(), downloadExport: download }));
+beforeEach(() => { globalThis.indexedDB = new IDBFactory(); });
+afterEach(() => { cleanup(); vi.clearAllMocks(); });
+it("initiates PDF download before persisting downloaded state, restores it, and permits re-download", async () => {
+  await saveExport("staff-a", { id: "one", userId: "staff-a", kind: "five-day", createdAt: "2026-11-20T21:21:00Z", tenants: ["Synthetic Sam"], count: 1, filename: "sam.pdf", blob: new Blob(["%PDF-synthetic"], { type: "application/pdf" }) });
+  download.mockImplementation(() => { expect(screen.queryByRole("listitem", { name: "Synthetic Sam, downloaded" })).toBeNull(); });
+  const open = () => render(<ExportSessionProvider userId="staff-a"><ExportHistory kind="five-day" /></ExportSessionProvider>);
+  const view = open();
+  fireEvent.click(await screen.findByRole("button", { name: "Download notice" }));
+  await screen.findByRole("listitem", { name: "Synthetic Sam, downloaded" });
+  expect(download).toHaveBeenCalledTimes(1);
+  expect((await listExports("staff-a", "five-day"))[0]?.downloadedFiles).toEqual(["sam.pdf"]);
+  view.unmount(); open();
+  await screen.findByRole("listitem", { name: "Synthetic Sam, downloaded" });
+  download.mockImplementation(() => {});
+  fireEvent.click(screen.getByRole("button", { name: "Download notice" }));
+  await waitFor(() => expect(download).toHaveBeenCalledTimes(2));
+});

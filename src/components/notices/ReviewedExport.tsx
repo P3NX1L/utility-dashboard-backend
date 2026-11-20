@@ -6,7 +6,7 @@ import type { GeneratedNotice } from "@/lib/notices/fiveDayPdf";
 import type { NoticeKind } from "@/lib/notices/types";
 import { useExportUser } from "./ExportSession";
 const PdfPreview = lazy(() => import("./OfficePdfPreview"));
-export function ReviewedExport({ notices, tenants, kind }: { notices: GeneratedNotice[]; tenants: string[]; kind: NoticeKind }) {
+export function ReviewedExport({ notices, tenants, kind, generatedAt, onSaved }: { notices: GeneratedNotice[]; tenants: string[]; kind: NoticeKind; generatedAt?: string; onSaved?: () => void }) {
   const userId = useExportUser();
   const [index, setIndex] = useState(0), [viewed, setViewed] = useState<string[]>([]);
   const [busy, setBusy] = useState(false), [error, setError] = useState("");
@@ -23,13 +23,15 @@ export function ReviewedExport({ notices, tenants, kind }: { notices: GeneratedN
     try {
       const output = await packageReviewed(notices, viewed, kind);
       if (!alive.current) return;
+      if (kind === "five-day" && notices.length !== 1) throw new Error("Select exactly one eligible tenant.");
       if (!saved) {
         const controller = new AbortController(); pending.current = controller;
-        await saveExport(userId, { ...output, id: crypto.randomUUID(), userId, kind, tenants, count: notices.length, createdAt: new Date().toISOString() }, controller.signal);
+        await saveExport(userId, { ...output, id: crypto.randomUUID(), userId, kind, tenants, count: notices.length, createdAt: generatedAt || new Date().toISOString() }, controller.signal);
         if (!alive.current) return;
         setSaved(true);
       }
-      downloadExport(output);
+      if (kind === "five-day") onSaved?.();
+      else downloadExport(output);
     } catch (e) { if (alive.current) setError(e instanceof Error ? e.message : "Export failed."); }
     finally { if (alive.current) setBusy(false); }
   };
@@ -40,7 +42,7 @@ export function ReviewedExport({ notices, tenants, kind }: { notices: GeneratedN
     <Suspense fallback={<p role="status">Loading PDF preview…</p>}><PdfPreview key={current.id} bytes={current.bytes} id={current.id} onRendered={markViewed} /></Suspense>
     <p className="text-xs text-muted-foreground">{viewed.length} of {notices.length} previews viewed. Review every PDF before download. Any edit or selection change clears this batch.</p>
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-    <Button className="w-full" disabled={!ready || busy} onClick={() => void download()}><Download className="size-4" />{busy ? "Saving export…" : notices.length === 1 ? "Download PDF" : `Download ZIP · ${notices.length} PDFs`}</Button>
+    <Button className="w-full" disabled={!ready || busy || !userId} onClick={() => void download()}><Download className="size-4" />{busy ? "Saving export…" : kind === "five-day" ? "Save notice to Exports" : notices.length === 1 ? "Download PDF" : `Download ZIP · ${notices.length} PDFs`}</Button>
     {saved && <p role="status" className="text-xs text-muted-foreground">Saved to Exports.</p>}
   </div>;
 }

@@ -1,11 +1,12 @@
 import { useRef, useState, type ReactNode } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import { Upload, FileText, ChevronDown, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { formatUSD } from "@/lib/notices/numberToWords";
 import { chicagoToday, eligible, noticeIssues, parseAppFolioCsv, selectedNoticeInputs, type PropertyGroup, type RentBatch, type RentTenant } from "@/lib/notices/fiveDay";
-import { buildRentBatch, type GeneratedBatch } from "@/lib/notices/fiveDayPdf";
+import { buildSingleRentNotice, type GeneratedBatch } from "@/lib/notices/fiveDayPdf";
 import { ReviewedExport } from "./ReviewedExport";
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
@@ -13,6 +14,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 }
 
 export function RentNoticeWorkspace() {
+  const navigate = useNavigate();
   const [batch, setBatch] = useState<RentBatch>({ properties: [], tenants: [] });
   const [fileName, setFileName] = useState("");
   const [search, setSearch] = useState("");
@@ -25,7 +27,8 @@ export function RentNoticeWorkspace() {
   const fileInput = useRef<HTMLInputElement>(null);
   const uploadLock = useRef(false);
   const dragDepth = useRef(0);
-  const [generated, setGenerated] = useState<GeneratedBatch | null>(null);
+  const [generated, setGenerated] = useState<Pick<GeneratedBatch, "notices"> | null>(null);
+  const [generatedAt, setGeneratedAt] = useState("");
   const revision = useRef(0), uploadVersion = useRef(0);
   const invalidate = () => { revision.current++; setGenerated(null); setError(""); };
   const updateTenant = (id: string, patch: Partial<RentTenant>) => {
@@ -34,9 +37,12 @@ export function RentNoticeWorkspace() {
   const updateProperty = (id: string, patch: Partial<PropertyGroup>) => {
     invalidate(); setBatch((b) => ({ ...b, properties: b.properties.map((p) => p.id === id ? { ...p, ...patch } : p) }));
   };
-  const select = (t: RentTenant, value: boolean) => {
-    updateTenant(t.id, { selected: value && eligible(t) });
-    if (value) setActiveId(t.id);
+  const select = (id: string) => {
+    const tenant = batch.tenants.find((t) => t.id === id);
+    if (!tenant || !eligible(tenant) || uploading) return;
+    invalidate();
+    setBatch((b) => ({ ...b, tenants: b.tenants.map((t) => ({ ...t, selected: t.id === id })) }));
+    setActiveId(id);
   };
   const load = async (files: File[]) => {
     if (uploadLock.current || busy || files.length === 0) return;
@@ -61,24 +67,22 @@ export function RentNoticeWorkspace() {
     return [t.name, t.unit, property?.label, property?.street, property?.city, property?.zip].some((value) => value?.toLocaleLowerCase().includes(query));
   });
   const visibleIds = new Set(visibleTenants.map((t) => t.id));
-  const visibleEligible = visibleTenants.filter(eligible);
   const hiddenSelected = selected.filter((t) => !visibleIds.has(t.id)).length;
-  const bulkSelect = (value: boolean) => {
-    invalidate();
-    setBatch((b) => ({ ...b, tenants: b.tenants.map((t) => visibleIds.has(t.id) ? { ...t, selected: value && eligible(t) } : t) }));
-  };
   const active = selected.find((t) => t.id === activeId) ?? selected[0];
   const properties = batch.properties.filter((p) => selected.some((t) => t.propertyId === p.id));
   const inputs = selectedNoticeInputs(batch, issueDate);
   const issues = inputs.flatMap((input) => noticeIssues(input).map((message) => `${input.tenant.name}: ${message}`));
   const generate = async () => {
+    if (busy || uploading) return;
+    if (inputs.length !== 1 || !inputs[0] || !eligible(inputs[0].tenant)) { setError("Select exactly one eligible tenant."); return; }
     const version = revision.current;
     setBusy(true); setError(""); setGenerated(null);
     try {
-      const result = await buildRentBatch(inputs);
+      const result = await buildSingleRentNotice(inputs);
       if (version !== revision.current) return;
       setGenerated(result);
-    } catch (e) { if (version === revision.current) setError(e instanceof Error ? e.message : "Unable to generate notices. No ZIP was created."); }
+      setGeneratedAt(new Date().toISOString());
+    } catch (e) { if (version === revision.current) setError(e instanceof Error ? e.message : "Unable to generate notice."); }
     finally { setBusy(false); }
   };
   return <div className="mt-6 space-y-6">
@@ -114,18 +118,16 @@ export function RentNoticeWorkspace() {
       <section aria-label="Tenant checklist" className="min-w-0">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h2 className="font-semibold">Tenants <span className="text-sm font-normal text-muted-foreground">({selected.length} selected)</span></h2>
-          <div className="flex flex-wrap gap-1"><Button variant="ghost" size="sm" disabled={!visibleEligible.length || uploading} onClick={() => bulkSelect(true)}>Select shown eligible ({visibleEligible.length})</Button>
-            <Button variant="ghost" size="sm" disabled={!visibleTenants.some((t) => t.selected) || uploading} onClick={() => bulkSelect(false)}>Clear shown</Button></div>
         </div>
         <div className="relative mb-2"><Search aria-hidden="true" className="pointer-events-none absolute left-3 top-3 size-4 text-muted-foreground" /><Input type="search" aria-label="Search tenants, properties or units" placeholder="Search tenant, property or unit" className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} /></div>
         <p role="status" className="mb-3 text-xs text-muted-foreground">{visibleTenants.length} of {batch.tenants.length} shown · {selected.length} selected{hiddenSelected > 0 && ` (${hiddenSelected} hidden by search)`}</p>
-        <div className="space-y-4 lg:max-h-[1000px] lg:overflow-y-auto lg:pr-1">
+        <RadioGroup aria-label="Select one tenant" value={selected[0]?.id ?? ""} onValueChange={select} className="space-y-4 lg:max-h-[1000px] lg:overflow-y-auto lg:pr-1">
           {visibleTenants.length === 0 && <p className="py-4 text-sm text-muted-foreground">No matching tenants.</p>}
           {batch.properties.filter((p) => visibleTenants.some((t) => t.propertyId === p.id)).map((property) => <div key={property.id}>
             <h3 className="mb-2 break-words text-sm font-semibold">{property.label}</h3>
             <p className="mb-2 break-words text-xs text-muted-foreground">{[property.street, property.city, property.zip].filter(Boolean).join(", ")}</p>
             <div className="space-y-1.5">{visibleTenants.filter((t) => t.propertyId === property.id).map((t) => <div key={t.id} className={`relative grid grid-cols-[20px_minmax(0,1fr)_24px] items-center gap-x-2 rounded-lg border px-3 py-2 ${t.selected ? "border-primary bg-accent" : "border-border bg-card"}`}>
-              <Checkbox id={`select-${t.id}`} className="rounded-full" aria-label={`Select ${t.name}, unit ${t.unit}, row ${t.sourceRow}`} aria-describedby={!eligible(t) ? `reason-${t.id}` : undefined} checked={t.selected} disabled={!eligible(t) || uploading} onCheckedChange={(v) => select(t, v === true)} />
+              <RadioGroupItem id={`select-${t.id}`} value={t.id} aria-label={`Select ${t.name}, unit ${t.unit}, row ${t.sourceRow}`} aria-describedby={!eligible(t) ? `reason-${t.id}` : undefined} disabled={!eligible(t) || uploading} />
               <label htmlFor={`select-${t.id}`} className="min-w-0 cursor-pointer">
                 <span className="block break-words text-sm font-medium leading-tight">{t.name}</span>
                 <span className="mt-0.5 flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-xs"><span className="break-words text-muted-foreground">Unit {t.unit || "—"}</span><span className="font-semibold" aria-label={`Delinquent rent ${formatUSD(t.rent)}`}>{formatUSD(t.rent)}</span>{!eligible(t) && <span id={`reason-${t.id}`} className="text-muted-foreground">{t.rent === 0 ? "Zero rent · disabled" : "No positive rent · disabled"}</span>}</span>
@@ -136,7 +138,7 @@ export function RentNoticeWorkspace() {
               </details>
             </div>)}</div>
           </div>)}
-        </div>
+        </RadioGroup>
       </section>
       <section aria-label="Review selected notices" className="min-w-0 space-y-5">
         <div className="flex items-center justify-between gap-2">
@@ -164,8 +166,8 @@ export function RentNoticeWorkspace() {
           <p className="text-sm">Rent demand: <strong>{formatUSD(active.rent)}</strong><span className="text-muted-foreground"> · Other charges excluded: {formatUSD(active.other)}</span></p>
         </div> : <p className="border-y border-dashed py-6 text-sm text-muted-foreground">No tenants selected.</p>}
         {issues.length > 0 && <div role="status" className="space-y-1 text-xs text-destructive">{[...new Set(issues)].slice(0, 6).map((issue) => <p key={issue}>{issue}</p>)}{issues.length > 6 && <p>Review all {issues.length} missing or invalid fields before generating.</p>}</div>}
-        <Button className="w-full" disabled={!selected.length || issues.length > 0 || busy || uploading} onClick={() => void generate()}><FileText className="size-4" />{busy ? "Generating complete batch…" : `Generate & preview ${selected.length || ""} notice${selected.length === 1 ? "" : "s"}`}</Button>
-        {generated && <ReviewedExport key={revision.current} notices={generated.notices} tenants={selected.map((t) => t.name)} kind="five-day" />}
+        <Button className="w-full" disabled={selected.length !== 1 || issues.length > 0 || busy || uploading} onClick={() => void generate()}><FileText className="size-4" />{busy ? "Generating notice…" : `Generate & preview ${selected.length || ""} notice`}</Button>
+        {generated && <ReviewedExport key={revision.current} notices={generated.notices} tenants={selected.map((t) => t.name)} kind="five-day" generatedAt={generatedAt} onSaved={() => void navigate({ to: "/five-day/exports" })} />}
       </section>
     </div>}
   </div>;

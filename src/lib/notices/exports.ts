@@ -5,6 +5,7 @@ import type { GeneratedNotice } from "./fiveDayPdf";
 export interface ExportRecord {
   id: string; userId: string; kind: NoticeKind; createdAt: string;
   tenants: string[]; count: number; filename: string; blob: Blob;
+  downloadedFiles?: string[];
 }
 export async function packageReviewed(notices: GeneratedNotice[], reviewed: string[], kind: NoticeKind) {
   if (!notices.length || notices.some((n) => !reviewed.includes(n.id))) throw new Error("Review every PDF before exporting.");
@@ -59,6 +60,44 @@ export async function listExports(userId: string, kind: NoticeKind): Promise<Exp
 }
 export function downloadExport(record: Pick<ExportRecord, "filename" | "blob">) {
   const url = URL.createObjectURL(record.blob);
-  const a = document.createElement("a"); a.href = url; a.download = record.filename; a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  const a = document.createElement("a"); a.href = url; a.download = record.filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 30_000);
+}
+
+export interface NoticeDownload {
+  recordId: string; filename: string; tenant: string; createdAt: string; blob: Blob; downloaded: boolean;
+}
+/** Legacy ZIPs remain stored verbatim; expose their individual PDFs without rewriting history. */
+export async function individualFiveDayDownloads(records: ExportRecord[]): Promise<NoticeDownload[]> {
+  const rows: NoticeDownload[] = [];
+  for (const record of records) {
+    const item = (filename: string, blob: Blob, index: number): NoticeDownload => ({ recordId: record.id, filename, blob, tenant: record.tenants[index] ?? filename, createdAt: record.createdAt, downloaded: record.downloadedFiles?.includes(filename) ?? false });
+    if (record.filename.toLowerCase().endsWith(".pdf")) rows.push(item(record.filename, record.blob, 0));
+    else if (record.filename.toLowerCase().endsWith(".zip")) {
+      const zip = await JSZip.loadAsync(await record.blob.arrayBuffer());
+      const files = Object.values(zip.files).filter((file) => !file.dir && file.name.toLowerCase().endsWith(".pdf"));
+      for (const [index, file] of files.entries()) {
+        const bytes = await file.async("uint8array");
+        rows.push(item(file.name, new Blob([new Uint8Array(bytes)], { type: "application/pdf" }), index));
+      }
+    }
+  }
+  return rows;
+}
+export async function markNoticeDownloaded(userId: string, recordId: string, filename: string): Promise<void> {
+  if (!userId) throw new Error("A signed-in account is required.");
+  const db = await openHistory();
+  try { await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction("exports", "readwrite");
+    const store = tx.objectStore("exports");
+    const request = store.get([userId, recordId]);
+    request.onsuccess = () => {
+      const record = request.result as ExportRecord | undefined;
+      if (!record || record.userId !== userId || record.kind !== "five-day") { tx.abort(); return; }
+      store.put({ ...record, downloadedFiles: [...new Set([...(record.downloadedFiles ?? []), filename])] });
+    };
+    tx.oncomplete = () => resolve();
+    tx.onerror = tx.onabort = () => reject(new Error("Downloaded state could not be saved."));
+  }); } finally { db.close(); }
 }

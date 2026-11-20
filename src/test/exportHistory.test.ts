@@ -5,8 +5,8 @@ import { beforeEach, describe, expect, it } from "vitest";
 import JSZip from "jszip";
 import { PDFDocument } from "pdf-lib";
 import { IDBFactory } from "fake-indexeddb";
-import { packageReviewed, saveExport, listExports, type ExportRecord } from "@/lib/notices/exports";
-import { buildRentBatch } from "@/lib/notices/fiveDayPdf";
+import { packageReviewed, saveExport, listExports, individualFiveDayDownloads, markNoticeDownloaded, type ExportRecord } from "@/lib/notices/exports";
+import { buildRentBatch, buildSingleRentNotice } from "@/lib/notices/fiveDayPdf";
 import { parseAppFolioCsv } from "@/lib/notices/fiveDay";
 import { generateAccessNotices } from "@/lib/notices/accessPdf";
 const csv = 'Unit,Name,Tenant Status,Amount Receivable,Delinquent Rent,Delinquent other charges\n"-> Test - 1 Test St Chicago, IL 60601",,,,,\nA,"Example, Alex",Current,2100,2070,30';
@@ -17,6 +17,36 @@ async function rentNotices() {
 const accessRow = { id: "access-1", names: "Synthetic Person", address: "1 Test St", unit: "A", entryDates: ["2026-11-25"], reason: "Inspection", selected: true, handedOff: false };
 beforeEach(() => { globalThis.indexedDB = new IDBFactory(); });
 describe("reviewed PDF and ZIP exports", () => {
+  it("active five-day generation rejects zero or two tenants at the boundary", async () => {
+    const tenant = parseAppFolioCsv(csv).tenants[0]; if (!tenant) throw new Error("Missing fixture");
+    const input = { tenant, owner: "Synthetic LLC", agent: "Aahil Penwalla", issueDate: "2025-04-14" };
+    await expect(buildSingleRentNotice([])).rejects.toThrow("exactly one eligible tenant");
+    await expect(buildSingleRentNotice([input, input])).rejects.toThrow("exactly one eligible tenant");
+  });
+  it("active five-day generation rejects one tenant with zero rent", async () => {
+    const tenant = parseAppFolioCsv(csv).tenants[0]; if (!tenant) throw new Error("Missing fixture");
+    await expect(buildSingleRentNotice([{ tenant: { ...tenant, rent: 0 }, owner: "Synthetic LLC", agent: "Aahil Penwalla", issueDate: "2025-04-14" }])).rejects.toThrow("greater than zero");
+  });
+  it("individual legacy PDF downloads retain their exact bytes and persist per-file downloaded state", async () => {
+    const first = (await rentNotices())[0]; if (!first) throw new Error("Missing PDF");
+    const two = [first, { ...first, id: "second", filename: "second.pdf" }];
+    const output = await packageReviewed(two, two.map((n) => n.id), "five-day");
+    const record: ExportRecord = { ...output, id: "legacy", userId: "staff-a", kind: "five-day", createdAt: "2026-11-20T17:00:00Z", count: 2, tenants: ["Synthetic Alex", "Synthetic Sam"] };
+    await saveExport("staff-a", record);
+    const rows = await individualFiveDayDownloads(await listExports("staff-a", "five-day"));
+    expect(rows).toHaveLength(2);
+    expect(rows[0]?.tenant).toBe("Synthetic Alex");
+    const one = rows[0]; if (!one) throw new Error("Missing download");
+    expect(one.blob.type).toBe("application/pdf");
+    expect(new Uint8Array(await one.blob.arrayBuffer())).toEqual(first.bytes);
+    await markNoticeDownloaded("staff-a", "legacy", one.filename);
+    const reopened = await individualFiveDayDownloads(await listExports("staff-a", "five-day"));
+    expect(reopened[0]?.downloaded).toBe(true);
+    expect(reopened[1]?.downloaded).toBe(false);
+    expect(reopened[0]?.createdAt).toBe("2026-11-20T17:00:00Z");
+    await expect(markNoticeDownloaded("staff-b", "legacy", one.filename)).rejects.toThrow("could not be saved");
+    expect((await listExports("staff-a", "five-day"))[0]?.blob.type).toBe("application/zip");
+  });
   it("one five-day tenant downloads original PDF bytes with PDF MIME and filename", async () => {
     const notices = await rentNotices(); const first = notices[0]; if (!first) throw new Error("Missing PDF");
     const output = await packageReviewed(notices, [first.id], "five-day");
