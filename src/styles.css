@@ -156,8 +156,13 @@
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
+    font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+    font-feature-settings: "tnum" 1;
+    -webkit-font-smoothing: antialiased;
   }
 }
 
-@layer base {
+/* The Utilities sidebar uses medium weight for the selected child link. */
+nav[aria-label="Notice navigation"] a[aria-current="page"] {
+  font-weight: 500;
 }
