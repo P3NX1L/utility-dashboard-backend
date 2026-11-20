@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useRef, useState, type ReactNode } from "react";
-import { Upload, Download, FileText, ChevronLeft, ChevronRight } from "lucide-react";
+import { Upload, Download, FileText, ChevronLeft, ChevronRight, ChevronDown, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -15,6 +15,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 export function RentNoticeWorkspace() {
   const [batch, setBatch] = useState<RentBatch>({ properties: [], tenants: [] });
   const [fileName, setFileName] = useState("");
+  const [search, setSearch] = useState("");
   const [issueDate, setIssueDate] = useState(chicagoToday);
   const [activeId, setActiveId] = useState("");
   const [error, setError] = useState("");
@@ -42,11 +43,23 @@ export function RentNoticeWorkspace() {
       if (file.size > 10 * 1024 * 1024) throw new Error("The CSV exceeds 10 MB.");
       const parsed = parseAppFolioCsv(await file.text());
       if (version !== uploadVersion.current) return;
-      setBatch(parsed); setFileName(file.name); setActiveId("");
+      setBatch(parsed); setFileName(file.name); setActiveId(""); setSearch("");
     } catch (e) { if (version === uploadVersion.current) setError(e instanceof Error ? e.message : "Unable to read CSV."); }
     finally { if (version === uploadVersion.current) setUploading(false); }
   };
   const selected = batch.tenants.filter((t) => t.selected);
+  const query = search.trim().toLocaleLowerCase();
+  const visibleTenants = batch.tenants.filter((t) => {
+    const property = batch.properties.find((p) => p.id === t.propertyId);
+    return [t.name, t.unit, property?.label, property?.street, property?.city, property?.zip].some((value) => value?.toLocaleLowerCase().includes(query));
+  });
+  const visibleIds = new Set(visibleTenants.map((t) => t.id));
+  const visibleEligible = visibleTenants.filter(eligible);
+  const hiddenSelected = selected.filter((t) => !visibleIds.has(t.id)).length;
+  const bulkSelect = (value: boolean) => {
+    invalidate();
+    setBatch((b) => ({ ...b, tenants: b.tenants.map((t) => visibleIds.has(t.id) ? { ...t, selected: value && eligible(t) } : t) }));
+  };
   const active = selected.find((t) => t.id === activeId) ?? selected[0];
   const properties = batch.properties.filter((p) => selected.some((t) => t.propertyId === p.id));
   const inputs = selectedNoticeInputs(batch, issueDate);
@@ -87,21 +100,27 @@ export function RentNoticeWorkspace() {
       <section aria-label="Tenant checklist" className="min-w-0">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h2 className="font-semibold">Tenants <span className="text-sm font-normal text-muted-foreground">({selected.length} selected)</span></h2>
-          <div className="flex gap-1"><Button variant="ghost" size="sm" disabled={uploading} onClick={() => { invalidate(); setBatch((b) => ({ ...b, tenants: b.tenants.map((t) => ({ ...t, selected: eligible(t) })) })); }}>Select eligible</Button>
-            <Button variant="ghost" size="sm" disabled={!selected.length || uploading} onClick={() => { invalidate(); setBatch((b) => ({ ...b, tenants: b.tenants.map((t) => ({ ...t, selected: false })) })); }}>Clear</Button></div>
+          <div className="flex flex-wrap gap-1"><Button variant="ghost" size="sm" disabled={!visibleEligible.length || uploading} onClick={() => bulkSelect(true)}>Select shown eligible ({visibleEligible.length})</Button>
+            <Button variant="ghost" size="sm" disabled={!visibleTenants.some((t) => t.selected) || uploading} onClick={() => bulkSelect(false)}>Clear shown</Button></div>
         </div>
-        <div className="space-y-5 lg:max-h-[1000px] lg:overflow-y-auto lg:pr-1">
-          {batch.properties.map((property) => <div key={property.id}>
+        <div className="relative mb-2"><Search aria-hidden="true" className="pointer-events-none absolute left-3 top-3 size-4 text-muted-foreground" /><Input type="search" aria-label="Search tenants, properties or units" placeholder="Search tenant, property or unit" className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} /></div>
+        <p role="status" className="mb-3 text-xs text-muted-foreground">{visibleTenants.length} of {batch.tenants.length} shown · {selected.length} selected{hiddenSelected > 0 && ` (${hiddenSelected} hidden by search)`}</p>
+        <div className="space-y-4 lg:max-h-[1000px] lg:overflow-y-auto lg:pr-1">
+          {visibleTenants.length === 0 && <p className="py-4 text-sm text-muted-foreground">No matching tenants.</p>}
+          {batch.properties.filter((p) => visibleTenants.some((t) => t.propertyId === p.id)).map((property) => <div key={property.id}>
             <h3 className="mb-2 break-words text-sm font-semibold">{property.label}</h3>
             <p className="mb-2 break-words text-xs text-muted-foreground">{[property.street, property.city, property.zip].filter(Boolean).join(", ")}</p>
-            <div className="space-y-2">{batch.tenants.filter((t) => t.propertyId === property.id).map((t) => <label key={t.id} className={`flex gap-3 rounded-lg border p-3 ${t.selected ? "border-primary bg-accent" : "border-border bg-card"}`}>
-              <Checkbox className="mt-0.5 rounded-full" aria-label={`Select ${t.name}, unit ${t.unit}, row ${t.sourceRow}`} checked={t.selected} disabled={!eligible(t) || uploading} onCheckedChange={(v) => select(t, v === true)} />
-              <div className="min-w-0 flex-1"><div className="flex flex-wrap items-baseline justify-between gap-x-2"><span className="break-words text-sm font-medium">{t.name}</span><span className="text-xs text-muted-foreground">Unit {t.unit || "—"}</span></div>
-                <p className="mt-1 text-xs text-muted-foreground">{t.status || "No status"}</p>
-                <dl className="mt-2 grid grid-cols-2 gap-x-2 gap-y-1 text-xs"><div><dt className="text-muted-foreground">Delinquent rent</dt><dd className="font-semibold">{formatUSD(t.rent)}</dd></div><div><dt className="text-muted-foreground">Other charges</dt><dd>{formatUSD(t.other)}</dd></div><div className="col-span-2 flex gap-2"><dt className="text-muted-foreground">Amount receivable</dt><dd>{formatUSD(t.receivable)}</dd></div></dl>
-                {!eligible(t) && <p className="mt-2 text-xs text-muted-foreground">{t.rent === 0 ? "Zero delinquent rent — disabled" : "No positive delinquent rent — disabled"}</p>}
-              </div>
-            </label>)}</div>
+            <div className="space-y-1.5">{visibleTenants.filter((t) => t.propertyId === property.id).map((t) => <div key={t.id} className={`relative grid grid-cols-[20px_minmax(0,1fr)_24px] items-center gap-x-2 rounded-lg border px-3 py-2 ${t.selected ? "border-primary bg-accent" : "border-border bg-card"}`}>
+              <Checkbox id={`select-${t.id}`} className="rounded-full" aria-label={`Select ${t.name}, unit ${t.unit}, row ${t.sourceRow}`} aria-describedby={!eligible(t) ? `reason-${t.id}` : undefined} checked={t.selected} disabled={!eligible(t) || uploading} onCheckedChange={(v) => select(t, v === true)} />
+              <label htmlFor={`select-${t.id}`} className="min-w-0 cursor-pointer">
+                <span className="block break-words text-sm font-medium leading-tight">{t.name}</span>
+                <span className="mt-0.5 flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-xs"><span className="break-words text-muted-foreground">Unit {t.unit || "—"}</span><span className="font-semibold" aria-label={`Delinquent rent ${formatUSD(t.rent)}`}>{formatUSD(t.rent)}</span>{!eligible(t) && <span id={`reason-${t.id}`} className="text-muted-foreground">{t.rent === 0 ? "Zero rent · disabled" : "No positive rent · disabled"}</span>}</span>
+              </label>
+              <details className="group col-start-2 col-span-2 min-w-0">
+                <summary aria-label={`Details for ${t.name}, unit ${t.unit}, row ${t.sourceRow}`} title="Tenant details" className="absolute right-2 top-2 flex size-7 cursor-pointer list-none items-center justify-center rounded-sm text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden"><ChevronDown aria-hidden="true" className="size-4 transition-transform group-open:rotate-180 motion-reduce:transition-none" /></summary>
+                <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-2 border-t border-border pt-2 text-xs"><div><dt className="text-muted-foreground">Status</dt><dd className="break-words">{t.status || "No status"}</dd></div><div><dt className="text-muted-foreground">Other charges</dt><dd>{formatUSD(t.other)}</dd></div><div className="col-span-2 flex flex-wrap gap-x-2"><dt className="text-muted-foreground">Amount receivable</dt><dd>{formatUSD(t.receivable)}</dd></div></dl>
+              </details>
+            </div>)}</div>
           </div>)}
         </div>
       </section>
