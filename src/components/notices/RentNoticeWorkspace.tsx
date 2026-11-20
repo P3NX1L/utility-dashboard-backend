@@ -34,10 +34,13 @@ export function RentNoticeWorkspace() {
     updateTenant(t.id, { selected: value && eligible(t) });
     if (value) setActiveId(t.id);
   };
+  const [dragging, setDragging] = useState(false);
+  const picker = useRef<HTMLInputElement>(null);
   const load = async (file: File) => {
     const version = ++uploadVersion.current;
     invalidate(); setUploading(true);
     try {
+      if (!/\.csv$/i.test(file.name)) throw new Error("Choose a CSV file.");
       if (file.size > 10 * 1024 * 1024) throw new Error("The CSV exceeds 10 MB.");
       const parsed = parseAppFolioCsv(await file.text());
       if (version !== uploadVersion.current) return;
@@ -73,16 +76,39 @@ export function RentNoticeWorkspace() {
     finally { setBusy(false); }
   };
   return <div className="mt-6 space-y-6">
-    <div className="flex flex-wrap items-center justify-between gap-3 border-y border-border py-4">
-      <div className="min-w-0"><h2 className="text-base font-semibold">AppFolio delinquency report</h2>
-        {fileName && <p className="mt-1 break-all text-sm text-muted-foreground">{fileName} · {batch.properties.length} properties · {batch.tenants.length} tenants</p>}
+    <section aria-label="AppFolio delinquency report upload"
+      onDragOver={(event) => {
+        if (!event.dataTransfer.types.includes("Files")) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = uploading ? "none" : "copy";
+        setDragging(!uploading);
+      }}
+      onDragLeave={(event) => {
+        if (!(event.relatedTarget instanceof Node) || !event.currentTarget.contains(event.relatedTarget)) setDragging(false);
+      }}
+      onDrop={(event) => {
+        event.preventDefault();
+        setDragging(false);
+        if (uploading) return;
+        const files = event.dataTransfer.files;
+        if (files.length !== 1) { setError("Drop one CSV file at a time."); return; }
+        void load(files[0]);
+      }}
+      className={`flex min-h-36 flex-wrap items-center justify-between gap-4 rounded-lg border-2 border-dashed px-6 py-5 transition-colors ${dragging ? "border-primary bg-accent" : "border-border"}`}>
+      <div className="min-w-0">
+        <h2 className="text-base font-semibold">AppFolio delinquency report</h2>
+        <p className="mt-1 text-sm text-muted-foreground">Drag and drop your CSV here.</p>
+        {fileName && <p className="mt-1 break-all text-sm">{fileName} · {batch.properties.length} properties · {batch.tenants.length} tenants</p>}
       </div>
-      <Button asChild variant={fileName ? "outline" : "default"}>
-        <label className="cursor-pointer"><Upload className="size-4" />{uploading ? "Reading CSV…" : fileName ? "Replace CSV" : "Upload UTF-8 CSV"}
-          <input type="file" accept=".csv,text/csv" aria-label="Upload AppFolio CSV" className="sr-only" disabled={uploading} onChange={(e) => { const file = e.target.files?.[0]; if (file) void load(file); e.target.value = ""; }} />
-        </label>
+      <input ref={picker} type="file" accept=".csv,text/csv" aria-label="Upload AppFolio CSV" hidden disabled={uploading} onChange={(event) => {
+        const file = event.target.files?.[0];
+        event.target.value = "";
+        if (file) void load(file);
+      }} />
+      <Button type="button" variant={fileName ? "outline" : "default"} disabled={uploading} onClick={() => picker.current?.click()}>
+        <Upload className="size-4" />{uploading ? "Reading CSV…" : fileName ? "Replace CSV" : "Upload CSV"}
       </Button>
-    </div>
+    </section>
     <p className="text-sm leading-relaxed text-muted-foreground">Rent demand uses <strong className="text-foreground">Delinquent Rent only</strong>, not Amount Receivable. Other charges are shown separately. Tenants with zero, negative, or missing rent cannot be selected. Nothing is sent to tenants or AppFolio.</p>
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
     {batch.tenants.length > 0 && <div className="grid items-start gap-7 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
