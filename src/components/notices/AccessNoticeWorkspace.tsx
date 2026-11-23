@@ -53,7 +53,7 @@ function AccountAccessWorkspace({ userId }: { userId: string }) {
   const groups = groupSelected(rows, selected);
   const issues = attempted && selected.size ? [...groups.map(municipalityIssue).filter(Boolean), ...accessDetailIssues(details)] : [];
   const reason = ACCESS_REASONS.find((r) => r.id === details.reason);
-  const toggle = (id: string, on: boolean) => { invalidate(); setSelected((s) => { const n = new Set(s); if (on) n.add(id); else n.delete(id); return n; }); };
+  const toggle = (id: string, on: boolean) => { invalidate(); setSelected(new Set(on ? [id] : [])); };
   const generate = async () => {
     setAttempted(true);
     const all = [...groups.map(municipalityIssue).filter(Boolean), ...accessDetailIssues(details)];
