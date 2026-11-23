@@ -74,9 +74,9 @@ export function AccessWorkspace() {
   return (
     <div className="space-y-6">
       <ImportPanel title="Import occupancy roster" fields={ACCESS_FIELDS} demoCsv={DEMO_ACCESS_CSV}
-        build={(g, m) => { const res = buildAccess(g, m); setRows((r) => [...r, ...res.tenants]); return { count: res.tenants.length, issues: res.issues }; }} />
+        build={(g, m) => { const res = buildAccess(g, m); setRows((r) => [...r, ...res.tenants.map(t => ({ ...t, selected: false }))]); return { count: res.tenants.length, issues: res.issues }; }} />
       <section className="space-y-2">
-        <SelectBar total={rows.length} selected={sel.length} onAll={(v) => setRows((r) => r.map((x) => ({ ...x, selected: v })))} />
+        <p className="text-sm">Choose one tenant · {sel.length} selected</p>
         <div className="overflow-x-auto rounded-lg border bg-card">
           <table className="w-full text-sm">
             <thead className="bg-muted text-left"><tr><th className="w-8 p-2" /><th className="p-2">Name(s)</th><th className="p-2">Address</th><th className="p-2">Unit</th><th className="p-2">Entry dates</th><th className="p-2">Reason</th><th /></tr></thead>
@@ -84,7 +84,7 @@ export function AccessWorkspace() {
               {rows.length === 0 && <tr><td colSpan={7} className="p-6 text-center text-muted-foreground">No occupants yet. Upload a roster or load the fictional sample.</td></tr>}
               {rows.map((r) => (
                 <tr key={r.id} className="border-t align-top">
-                  <td className="p-2"><Checkbox aria-label={`Select ${r.names}`} checked={r.selected} onCheckedChange={(v) => upd(r.id, { selected: v === true })} /></td>
+                  <td className="p-2"><Checkbox aria-label={`Select ${r.names}`} checked={r.selected} onCheckedChange={(v) => setRows(current => current.map(t => ({ ...t, selected: v === true && t.id === r.id })))} /></td>
                   <td className="p-1"><Input className={cellInput} value={r.names} onChange={(e) => upd(r.id, { names: e.target.value })} /></td>
                   <td className="p-1"><Input className={cellInput} value={r.address} onChange={(e) => upd(r.id, { address: e.target.value })} /></td>
                   <td className="p-1 w-20"><Input className={cellInput} value={r.unit} onChange={(e) => upd(r.id, { unit: e.target.value })} /></td>
