@@ -171,11 +171,22 @@ async def action(action: str, request: Request):
             if not pdf.startswith(b"%PDF-") or not data["filename"].lower().endswith(".pdf"):
                 raise ValueError("Expected one access notice PDF.")
             s["recipient"] = await prepare(s["page"], data["tenant"], data["address"], data["subject"], data["body"], data["filename"], pdf)
+            s["approved"] = (s["page"].url, data["subject"], data["body"], data["filename"])
             s["state"] = "review"
         elif action == "send" and s["state"] == "review":
             page = s["page"]
             if (await page.locator("#email_recipients").input_value()).strip() != s["recipient"]:
                 raise ValueError("AppFolio recipient changed.")
+            profile, subject, body, filename = s["approved"]
+            if (page.url != profile
+                    or await page.locator("#email_subject").input_value() != subject
+                    or await page.locator("#email_message").input_value() != body
+                    or not await page.get_by_text(filename, exact=True).first.is_visible()):
+                raise ValueError("The AppFolio draft changed. Review the notice and try again.")
+            copies = page.locator('#email_cc, #email_bcc, input[name$="[cc]"], input[name$="[bcc]"], textarea[name$="[cc]"], textarea[name$="[bcc]"]')
+            for field in await copies.all():
+                if (await field.input_value()).strip():
+                    raise ValueError("AppFolio added another recipient. Review the notice and try again.")
             async with httpx.AsyncClient(timeout=10) as client:
                 claim = await client.post(SB + "/rest/v1/notice_access_email_attempts",
                     headers={"apikey": KEY, "Authorization": request.headers["authorization"], "Prefer": "return=minimal"},
