@@ -5,6 +5,7 @@ import type { GeneratedNotice } from "./fiveDayPdf";
 export interface ExportRecord {
   id: string; userId: string; kind: NoticeKind; createdAt: string;
   tenants: string[]; count: number; filename: string; blob: Blob;
+  accessEmail?: { address: string; subject: string; body: string };
   downloadedFiles?: string[];
   deletedFiles?: string[];
 }
