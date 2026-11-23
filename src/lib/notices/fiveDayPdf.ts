@@ -73,11 +73,12 @@ export async function generateNoticePdf(input: NoticeInput, heading: Uint8Array)
   nameExtra = Math.max(0, nameExtra - 13.8);
   const amount = t.rent;
   if (amount === null) throw new Error("Missing delinquent rent.");
-  const sumExtra = drawWrapped(page, regular, bold, [
+  // One continuous sentence (sample: two lines at 220/234); later blocks follow its real last line.
+  const sumExtra = Math.max(0, drawWrapped(page, regular, bold, [
     { text: "sum of: " }, { text: demandWords(amount), bold: true, underline: true },
-    { text: " being rent due for the premises" },
-  ], 72, 220 + nameExtra, 468);
-  const cityExtra = drawWrapped(page, regular, bold, [{ text: `situated in the City of ${t.city}, County of Cook, and State of Illinois described as follows to-wit:` }], 72, 234 + nameExtra + sumExtra, 468);
+    { text: ` being rent due for the premises situated in the City of ${t.city}, County of Cook, and State of Illinois described as follows to-wit:` },
+  ], 72, 220 + nameExtra, 468) - 13.8);
+  const cityExtra = 0;
   const streetExtra = drawWrapped(page, regular, bold, [{ text: `${t.street} Unit #${t.unit}, ${t.city}, IL ${t.zip}`, bold: true, underline: true }], 72, 262 + nameExtra + sumExtra + cityExtra, 468, true);
   const bodyExtra = nameExtra + sumExtra + cityExtra + streetExtra;
   for (const [x, baseline, isBold, text] of template.runs) {
