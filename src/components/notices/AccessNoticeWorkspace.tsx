@@ -10,9 +10,7 @@ import { readSharedReport, saveSharedReport, StaffDeniedError } from "@/lib/noti
 import type { GeneratedNotice } from "@/lib/notices/fiveDayPdf";
 import { ACCESS_REASONS, accessDateList, accessDetailIssues, defaultAccessDetails, generateAccessBatch, groupSelected, municipalityIssue, minimizedDirectoryCsv, parseTenantDirectory, type AccessDetails, type DirectoryRow, type ReasonId } from "@/lib/notices/accessDirectory";
 
-function AccessEmailDraft({ tenant, address, dates, filename }: { tenant: string; address: string; dates: string; filename: string }) {
-  const [subject, setSubject] = useState("Access Notice");
-  const [body, setBody] = useState(`Hello,\n\nWe will be accessing your unit on ${dates}.\n\nPlease find the attached 2-Day Access Notice for more details.\n\nThank you,\nFirst Western Properties`);
+function AccessEmailDraft({ tenant, address, subject, body, setSubject, setBody, filename }: { tenant: string; address: string; subject: string; body: string; setSubject: (value: string) => void; setBody: (value: string) => void; filename: string }) {
   const [feedback, setFeedback] = useState("");
   async function copy(value: string, label: string) {
     try {
@@ -73,6 +71,8 @@ function AccountAccessWorkspace({ userId }: { userId: string }) {
   };
   const q = search.trim().toLowerCase();
   const visible = rows.filter((r) => !q || [r.tenant, r.property, r.unit].some((s) => s.toLowerCase().includes(q)));
+  const [subject, setSubject] = useState("Access Notice");
+  const [body, setBody] = useState("");
   const groups = groupSelected(rows, new Set(selectedId === null ? [] : [selectedId]));
   const issues = attempted && selectedId !== null ? [...groups.map(municipalityIssue).filter(Boolean), ...accessDetailIssues(details)] : [];
   const reason = ACCESS_REASONS.find((r) => r.id === details.reason);
@@ -82,7 +82,7 @@ function AccountAccessWorkspace({ userId }: { userId: string }) {
     const all = [...groups.map(municipalityIssue).filter(Boolean), ...accessDetailIssues(details)];
     if (all.length) { setGenerated(null); return; }
     const v = revision.current; setBusy(true); setError(""); setGenerated(null);
-    try { const out = await generateAccessBatch(groups, details); if (revision.current === v) setGenerated(out); }
+    try { const out = await generateAccessBatch(groups, details); if (revision.current === v) { setSubject("Access Notice"); setBody(`Hello,\n\nWe will be accessing your unit on ${accessDateList(details.dates)}.\n\nPlease find the attached 2-Day Access Notice for more details.\n\nThank you,\nFirst Western Properties`); setGenerated(out); } }
     catch (e) { if (revision.current === v) setError(e instanceof Error ? e.message : "No notice created."); }
     finally { setBusy(false); }
   };
@@ -131,8 +131,8 @@ function AccountAccessWorkspace({ userId }: { userId: string }) {
         </div>
         {issues.map((i) => <p key={i} className="text-xs text-destructive">{i}</p>)}{error && <p role="alert" className="text-sm text-destructive">{error}</p>}
         <Button className="w-full" disabled={groups.length !== 1 || busy} onClick={() => void generate()}>{busy ? "Generating…" : `Generate & Preview ${groups.length} notice${groups.length === 1 ? "" : "s"}`}</Button>
-        {generated?.[0] && groups[0] && <AccessEmailDraft key={revision.current} tenant={groups[0].names.join(" & ")} address={[groups[0].street, groups[0].unit && `Unit ${groups[0].unit}`].filter(Boolean).join(", ")} dates={accessDateList(details.dates)} filename={generated[0].filename} />}
-        {generated && <ReviewedExport key={revision.current} notices={generated} tenants={groups.map((g) => g.names.join(" & "))} kind="access" />}
+        {generated?.[0] && groups[0] && <AccessEmailDraft key={revision.current} tenant={groups[0].names.join(" & ")} address={[groups[0].street, groups[0].unit && `Unit ${groups[0].unit}`].filter(Boolean).join(", ")} subject={subject} body={body} setSubject={setSubject} setBody={setBody} filename={generated[0].filename} />}
+        {generated && <ReviewedExport key={revision.current} notices={generated} tenants={groups.map((g) => g.names.join(" & "))} kind="access" accessEmail={{ subject, body, address: [groups[0]?.street, groups[0]?.unit && `Unit ${groups[0].unit}`, groups[0]?.cityLine].filter(Boolean).join(", ") }} />}
       </section>
     </div>}
   </div>;
