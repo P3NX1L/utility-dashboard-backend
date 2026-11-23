@@ -6,7 +6,7 @@ import type { GeneratedNotice } from "@/lib/notices/fiveDayPdf";
 import type { NoticeKind } from "@/lib/notices/types";
 import { useExportUser } from "./ExportSession";
 const PdfPreview = lazy(() => import("./OfficePdfPreview"));
-export function ReviewedExport({ notices, tenants, kind, generatedAt, onSaved }: { notices: GeneratedNotice[]; tenants: string[]; kind: NoticeKind; generatedAt?: string; onSaved?: () => void }) {
+export function ReviewedExport({ notices, tenants, kind, accessEmail, generatedAt, onSaved }: { notices: GeneratedNotice[]; tenants: string[]; kind: NoticeKind; accessEmail?: import("@/lib/notices/exports").ExportRecord["accessEmail"]; generatedAt?: string; onSaved?: () => void }) {
   const userId = useExportUser();
   const [index, setIndex] = useState(0), [viewed, setViewed] = useState<string[]>([]);
   const [busy, setBusy] = useState(false), [error, setError] = useState("");
@@ -26,7 +26,7 @@ export function ReviewedExport({ notices, tenants, kind, generatedAt, onSaved }:
       if (kind === "five-day" && notices.length !== 1) throw new Error("Select exactly one eligible tenant.");
       if (!saved) {
         const controller = new AbortController(); pending.current = controller;
-        await saveExport(userId, { ...output, id: crypto.randomUUID(), userId, kind, tenants, count: notices.length, createdAt: generatedAt || new Date().toISOString() }, controller.signal);
+        await saveExport(userId, { ...output, ...(kind === "access" && accessEmail ? { accessEmail } : {}), id: crypto.randomUUID(), userId, kind, tenants, count: notices.length, createdAt: generatedAt || new Date().toISOString() }, controller.signal);
         if (!alive.current) return;
         setSaved(true);
       }
