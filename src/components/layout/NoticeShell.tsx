@@ -1,10 +1,10 @@
 import { Link, useLocation } from "@tanstack/react-router";
 import { useEffect, useState, type ReactNode } from "react";
-import { FileText, Mail, KeyRound, ChevronDown, Menu, LogOut, List } from "lucide-react";
+import { FileText, Mail, KeyRound, ChevronDown, Menu, Settings, List } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const logo = "https://1stwesterndashboard.xyz/__l5e/assets-v1/df0c4a52-40e0-4ec9-a986-8bbe34942c8d/first-western-logo-hd.png";
-export function NoticeShell({ children, email, signOut }: { children: ReactNode; email: string | null; signOut: (() => void) | null }) {
+export function NoticeShell({ children, signOut }: { children: ReactNode; email: string | null; signOut: (() => void) | null }) {
   const path = useLocation().pathname;
   const mapping = path === "/five-day/legal-owner-mapping";
   const access = path.startsWith("/access");
@@ -15,7 +15,7 @@ export function NoticeShell({ children, email, signOut }: { children: ReactNode;
   const linkClass = "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-normal focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
   const navigation = (prefix: string) => <nav aria-label="Notice navigation" className="flex flex-1 flex-col gap-2 p-3">
     {(["five-day", "access"] as const).map((kind) => {
-      const isAccess = kind === "access", active = isAccess === access;
+      const isAccess = kind === "access", active = path !== "/settings" && isAccess === access;
       const Icon = isAccess ? KeyRound : Mail;
       return <div key={kind}>
         <button type="button" aria-expanded={expanded[kind]} aria-controls={`${prefix}-${kind}`} onClick={() => setExpanded((old) => ({ ...old, [kind]: !old[kind] }))} className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-semibold transition-colors hover:bg-sidebar-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"><Icon className="size-[22px] shrink-0 text-primary" /><span className="flex-1 text-left">{isAccess ? "Access Notice" : "5-Day Notice"}</span><ChevronDown className={`size-4 shrink-0 transition-transform motion-reduce:transition-none ${expanded[kind] ? "" : "-rotate-90"}`} /></button>
@@ -29,7 +29,7 @@ export function NoticeShell({ children, email, signOut }: { children: ReactNode;
       </div>;
     })}
   </nav>;
-  const footer = <div className="border-t border-sidebar-border p-3">{signOut && <><p className="mb-2 break-all px-3 text-xs text-muted-foreground">{email}</p><Button variant="ghost" className="h-auto w-full justify-start gap-3 px-3 py-2 text-sm font-medium" onClick={signOut}><LogOut className="size-5 text-primary" />Sign out</Button></>}</div>;
+  const footer = <div className="border-t border-sidebar-border p-3"><Link to="/settings" className={`${linkClass} ${path === "/settings" ? "bg-sidebar-accent" : "hover:bg-muted"}`}><Settings className="size-5 text-primary" />Settings</Link></div>;
   return <div className="flex min-h-screen w-full font-sans text-sm antialiased [font-feature-settings:\'tnum\'_1]">
     <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col overflow-y-auto border-r border-sidebar-border bg-sidebar text-sidebar-foreground lg:flex">
       <div className="flex h-16 shrink-0 items-center border-b border-sidebar-border px-6"><Link to="/" aria-label="First Western Tenant Notices" className="rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><img src={logo} alt="First Western Properties" width={398} height={108} className="h-12 w-auto" /></Link></div>
