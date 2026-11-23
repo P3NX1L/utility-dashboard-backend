@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Plus, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
+
 import { ReviewedExport } from "./ReviewedExport";
 import { useExportUser } from "./ExportSession";
 import { getSupabase } from "@/lib/supabase";
@@ -40,7 +40,7 @@ export function AccessNoticeWorkspace() {
 
 function AccountAccessWorkspace({ userId }: { userId: string }) {
   const [rows, setRows] = useState<DirectoryRow[]>([]), [fileName, setFileName] = useState("");
-  const [selected, setSelected] = useState<Set<string>>(new Set()), [search, setSearch] = useState("");
+  const [selectedId, setSelectedId] = useState<string | null>(null), [search, setSearch] = useState("");
   const [details, setDetails] = useState<AccessDetails>(defaultAccessDetails);
   const [generated, setGenerated] = useState<GeneratedNotice[] | null>(null);
   const [busy, setBusy] = useState(false), [error, setError] = useState(""), [uploadError, setUploadError] = useState("");
@@ -67,16 +67,16 @@ function AccountAccessWorkspace({ userId }: { userId: string }) {
       const next = await saveSharedReport(getSupabase(), "tenant_directory", file.name, minimizedDirectoryCsv(parsed), shared.current);
       if (ctl.signal.aborted) return;
       shared.current = next; uploaded.current = true;
-      invalidate(); setRows(parsed); setFileName(file.name); setSelected(new Set()); setSearch(""); setAttempted(false);
+      invalidate(); setRows(parsed); setFileName(file.name); setSelectedId(null); setSearch(""); setAttempted(false);
     } catch (e) { if (e instanceof StaffDeniedError) setDenied(true); setUploadError(`${e instanceof Error ? e.message : "Upload failed."} Your previous directory is unchanged.`); }
     finally { setBusy(false); if (input.current) input.current.value = ""; }
   };
   const q = search.trim().toLowerCase();
   const visible = rows.filter((r) => !q || [r.tenant, r.property, r.unit].some((s) => s.toLowerCase().includes(q)));
-  const groups = groupSelected(rows, selected);
-  const issues = attempted && selected.size ? [...groups.map(municipalityIssue).filter(Boolean), ...accessDetailIssues(details)] : [];
+  const groups = groupSelected(rows, new Set(selectedId === null ? [] : [selectedId]));
+  const issues = attempted && selectedId !== null ? [...groups.map(municipalityIssue).filter(Boolean), ...accessDetailIssues(details)] : [];
   const reason = ACCESS_REASONS.find((r) => r.id === details.reason);
-  const toggle = (id: string, on: boolean) => { invalidate(); setSelected(new Set(on ? [id] : [])); };
+  const toggle = (id: string) => { invalidate(); setSelectedId(current => current === id ? null : id); };
   const generate = async () => {
     setAttempted(true);
     const all = [...groups.map(municipalityIssue).filter(Boolean), ...accessDetailIssues(details)];
@@ -99,12 +99,13 @@ function AccountAccessWorkspace({ userId }: { userId: string }) {
     {uploadError && <p role="alert" className="text-sm text-destructive">{uploadError}</p>}
     {rows.length > 0 && <div className="grid items-start gap-7 lg:grid-cols-2">
       <section className="min-w-0 space-y-3" aria-label="Access recipients">
+        <div className="flex items-center justify-between"><h2 className="font-semibold">Choose one tenant</h2><Button size="sm" variant="ghost" disabled={selectedId === null} onClick={() => { invalidate(); setSelectedId(null); }}>Clear selection</Button></div>
         <Input type="search" aria-label="Search tenants" placeholder="Search tenant, property or unit" value={search} onChange={(e) => setSearch(e.target.value)} />
         <div className="max-h-[70vh] space-y-1 overflow-y-auto rounded-lg border border-border p-2">
-          {visible.map((r) => <label key={r.id} className={`flex items-center gap-3 rounded-md border p-2 ${selected.has(r.id) ? "border-primary bg-accent" : "border-border bg-card"}`}>
-            <Checkbox className="rounded-full" checked={selected.has(r.id)} aria-label={`Select ${r.tenant}, ${r.role}, unit ${r.unit}`} onCheckedChange={(v) => toggle(r.id, v === true)} />
+          {visible.map((r) => <button type="button" key={r.id} aria-pressed={selectedId === r.id} onClick={() => toggle(r.id)} className={`flex w-full items-center gap-3 rounded-md border p-2 text-left ${selectedId === r.id ? "border-primary bg-accent" : "border-border bg-card"}`}>
+            <span aria-hidden="true" className={`size-4 shrink-0 rounded-full border ${selectedId === r.id ? "border-primary bg-primary ring-2 ring-inset ring-white" : "border-input"}`} />
             <span className="min-w-0 text-sm"><span className="block break-words font-medium">{r.tenant} <span className="font-normal text-muted-foreground">· {r.role || "—"}</span></span><span className="block break-words text-xs text-muted-foreground">{r.property || "No property listed"} · Unit {r.unit || "—"}</span></span>
-          </label>)}
+          </button>)}
           {!visible.length && <p className="p-3 text-sm text-muted-foreground">No tenants match.</p>}
         </div>
       </section>
@@ -129,7 +130,7 @@ function AccountAccessWorkspace({ userId }: { userId: string }) {
           <label className="space-y-1 text-sm"><span>Landlord/agent</span><Input aria-label="Landlord/agent" value={details.agent} onChange={(e) => patch({ agent: e.target.value })} /></label>
         </div>
         {issues.map((i) => <p key={i} className="text-xs text-destructive">{i}</p>)}{error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-        <Button className="w-full" disabled={!groups.length || busy} onClick={() => void generate()}>{busy ? "Generating…" : `Generate & Preview ${groups.length} notice${groups.length === 1 ? "" : "s"}`}</Button>
+        <Button className="w-full" disabled={groups.length !== 1 || busy} onClick={() => void generate()}>{busy ? "Generating…" : `Generate & Preview ${groups.length} notice${groups.length === 1 ? "" : "s"}`}</Button>
         {generated?.[0] && groups[0] && <AccessEmailDraft key={revision.current} tenant={groups[0].names.join(" & ")} address={[groups[0].street, groups[0].unit && `Unit ${groups[0].unit}`].filter(Boolean).join(", ")} dates={accessDateList(details.dates)} filename={generated[0].filename} />}
         {generated && <ReviewedExport key={revision.current} notices={generated} tenants={groups.map((g) => g.names.join(" & "))} kind="access" />}
       </section>
