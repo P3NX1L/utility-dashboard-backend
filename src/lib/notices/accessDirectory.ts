@@ -189,7 +189,9 @@ export async function buildAccessPdf(g: UnitGroup, d: AccessDetails): Promise<Ui
 }
 
 export async function generateAccessBatch(groups: UnitGroup[], d: AccessDetails): Promise<GeneratedNotice[]> {
-  if (!groups.length) throw new Error("Select at least one recipient.");
+  if (groups.length !== 1 || groups[0]?.names.length !== 1) {
+    throw new Error("Choose exactly one tenant for this access notice.");
+  }
   const blocked = groups.map(municipalityIssue).filter(Boolean);
   if (blocked.length) throw new Error(blocked.join(" "));
   const issues = accessDetailIssues(d); if (issues.length) throw new Error(issues.join(" "));
