@@ -9,25 +9,33 @@ export const DIRECTORY_HEADERS = ["Property", "Unit", "Tenant", "Status", "Tenan
 export interface DirectoryRow { id: string; property: string; unit: string; tenant: string; status: string; role: string }
 export interface UnitGroup { key: string; propertyName: string; street: string; cityLine: string; unit: string; names: string[]; chicago: boolean }
 
+const REQUIRED = ["Property", "Unit", "Tenant"] as const;
+/** Columns are located by header name in any order; only Property, Unit and Tenant are required. */
 export function parseTenantDirectory(text: string): DirectoryRow[] {
   const parsed = Papa.parse<string[]>(text.replace(/^\uFEFF/, ""), { skipEmptyLines: "greedy" });
   if (parsed.errors.length) throw new Error(`CSV error on row ${(parsed.errors[0]?.row ?? 0) + 1}: ${parsed.errors[0]?.message}`);
   const [header, ...rows] = parsed.data;
-  if (!header || header.map((h) => h.trim()).join("|") !== DIRECTORY_HEADERS.join("|")) throw new Error(`Header must be exactly: ${DIRECTORY_HEADERS.join(",")}`);
+  const names = (header ?? []).map((h) => (h ?? "").trim().toLowerCase());
+  const col = (n: string) => names.indexOf(n.toLowerCase());
+  const missing = REQUIRED.filter((n) => col(n) < 0);
+  if (missing.length) throw new Error(`Missing required column${missing.length > 1 ? "s" : ""}: ${missing.join(", ")}.`);
+  const [ip, iu, it, is, ir] = [col("Property"), col("Unit"), col("Tenant"), col("Status"), col("Tenant Type")];
+  const get = (r: string[], i: number) => (i < 0 ? "" : (r[i] ?? "").trim());
   const out: DirectoryRow[] = [];
   rows.forEach((r, i) => {
-    const [property = "", unit = "", tenant = "", status = "", role = ""] = r.map((c) => (c ?? "").trim());
+    const tenant = get(r, it);
     if (!tenant) return; // blank spacer and trailing total rows carry no tenant
-    if (!property.includes(" - ")) throw new Error(`Row ${i + 2}: Property must look like "Name - Street City, ST ZIP".`);
-    out.push({ id: `t${i}`, property, unit, tenant, status, role });
+    out.push({ id: `t${i}`, property: get(r, ip), unit: get(r, iu), tenant, status: get(r, is), role: get(r, ir) });
   });
   if (!out.length) throw new Error("No tenant rows found in this directory.");
   return out;
 }
 
+/** Accepts "Name - Street City, ST ZIP" or a raw "Street City, ST ZIP". */
+const addressPart = (property: string) => { const at = property.indexOf(" - "); return (at < 0 ? property : property.slice(at + 3)).trim(); };
 export function splitProperty(property: string) {
   const at = property.indexOf(" - ");
-  const name = property.slice(0, at).trim(), address = property.slice(at + 3).trim();
+  const name = at < 0 ? "" : property.slice(0, at).trim(), address = addressPart(property);
   const m = address.match(/^(.*?\S),?\s+((?:Blue Island|Calumet Park|Calumet City|Evergreen Park|Oak Lawn|Oak Park|[A-Za-z.]+),\s*[A-Z]{2}\s+\d{5}(?:-\d{4})?)$/);
   return { name, street: m ? m[1]!.replace(/,$/, "") : address, cityLine: m ? m[2]! : "" };
 }
@@ -36,21 +44,20 @@ export function splitProperty(property: string) {
  * "<street> Chicago, IL <ZIP>". Directional/compound prefixes (West/North/East/South Chicago),
  * suffixes (Chicago Heights, Chicago Ridge) and anything unparseable fail closed. */
 export function isChicagoAddress(property: string): boolean {
-  const at = property.indexOf(" - ");
-  if (at < 0) return false;
-  const m = property.slice(at + 3).trim().match(/^(.*\S),?\s+Chicago,\s*IL\s+\d{5}(?:-\d{4})?$/);
+  const m = addressPart(property).match(/^(.*\S),?\s+Chicago,\s*IL\s+\d{5}(?:-\d{4})?$/);
   if (!m) return false;
   const prev = m[1]!.replace(/,$/, "").split(/\s+/).at(-1)?.toLowerCase() ?? "";
   return !!prev && !["west", "north", "east", "south", "new", "old", "of", "lake", "port"].includes(prev);
 }
-export const municipalityIssue = (g: UnitGroup) => g.chicago ? "" :
+export const municipalityIssue = (g: UnitGroup) => !g.street ? `${g.names.join(" & ")}: property address is missing in the tenant directory; this notice cannot be generated.` : g.chicago ? "" :
   `${g.street}${g.unit ? `, Unit ${g.unit}` : ""}: municipality is not Chicago or could not be confirmed (${g.cityLine || "unknown"}). A municipality-specific office template is needed before this notice can be generated.`;
 
 export function groupSelected(rows: DirectoryRow[], selected: Set<string>): UnitGroup[] {
   const groups = new Map<string, UnitGroup>();
   for (const r of rows) {
     if (!selected.has(r.id)) continue;
-    const key = `${r.property}\u0000${r.unit}`;
+    // Records without a property never merge with each other.
+    const key = r.property ? `${r.property}\u0000${r.unit}` : `missing\u0000${r.id}`;
     const p = splitProperty(r.property);
     const g = groups.get(key) ?? { key, propertyName: p.name, street: p.street, cityLine: p.cityLine, unit: r.unit, names: [], chicago: isChicagoAddress(r.property) };
     g.names.push(r.tenant); groups.set(key, g);

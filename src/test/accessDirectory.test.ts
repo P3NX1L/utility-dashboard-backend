@@ -1,6 +1,6 @@
 import { PDFDocument, PDFRawStream, decodePDFRawStream } from "pdf-lib";
 import { describe, expect, it } from "vitest";
-import { isChicagoAddress, accessDetailIssues, defaultAccessDetails, generateAccessBatch, groupSelected, parseTenantDirectory, reasonText, splitProperty } from "@/lib/notices/accessDirectory";
+import { minimizedDirectoryCsv, isChicagoAddress, accessDetailIssues, defaultAccessDetails, generateAccessBatch, groupSelected, parseTenantDirectory, reasonText, splitProperty } from "@/lib/notices/accessDirectory";
 const H = "Property,Unit,Tenant,Status,Tenant Type,Phone Numbers,Emails,Move-in,Lease To,Rent,Deposit,Tenant Tags";
 const CSV = `\uFEFF${H}\n"Example - 100 Example St Chicago, IL 60612",1,"Doe, Jane",Current,Financially Responsible,555,a@x.test,,,"1,000.00",0,\n"Example - 100 Example St Chicago, IL 60612",1,"Roe , Sam",Current,Co-signer,,,,,,,\n\n"Example - 100 Example St Chicago, IL 60612",2,"Poe, Al",Current,Other Occupant,,,,,,,\nTotal,,,,,,,,,"1,000.00",0,\n`;
 describe("access tenant directory", () => {
@@ -23,7 +23,7 @@ describe("access tenant directory", () => {
     const g = groupSelected(rows, new Set([rows[0]!.id]));
     await expect(generateAccessBatch(g, { ...defaultAccessDetails(), dates: ["2026-12-01"], start: "09:00", end: "12:00", reason: "routine" })).rejects.toThrow(/municipality-specific office template/);
   });
-  it("rejects a wrong header", () => { expect(() => parseTenantDirectory("Property,Unit\nx,1")).toThrow(/Header/); });
+  it("rejects a wrong header", () => { expect(() => parseTenantDirectory("Property,Unit\nx,1")).toThrow(/Missing required column/); });
   it("splits property into street and city line", () => {
     expect(splitProperty("Example - 100 Example St Chicago, IL 60612")).toEqual({ name: "Example", street: "100 Example St", cityLine: "Chicago, IL 60612" });
   });
@@ -53,5 +53,25 @@ describe("access tenant directory", () => {
     expect(text).toContain("Routine inspection to assess compliance with lease or law");
     expect(text).toContain("THANK YOU FOR YOUR COOPERATION.");
     expect(text).toContain("LANDLORD/AGENT");
+  });
+});
+describe("mixed tenant directory", () => {
+  const MIXED = `Tenant,Unit,Property\n"Doe, Jane",2,"1631 S. California Ave Chicago, IL 60608"\n"Roe, Sam",1,"Lbl - 5 Test Ave Blue Island, IL 60406"\n"Poe, Al",,\n"Moe, Bo",,\n,,Total\n`;
+  const D = { ...defaultAccessDetails(), dates: ["2026-12-01"], start: "09:00", end: "12:00", reason: "routine" as const };
+  it("accepts raw addresses, arbitrary column order and keeps every named row searchable", async () => {
+    const rows = parseTenantDirectory(MIXED);
+    expect(rows.map((r) => r.tenant)).toEqual(["Doe, Jane", "Roe, Sam", "Poe, Al", "Moe, Bo"]);
+    expect(splitProperty(rows[0]!.property)).toEqual({ name: "", street: "1631 S. California Ave", cityLine: "Chicago, IL 60608" });
+    expect(isChicagoAddress(rows[0]!.property)).toBe(true);
+    const round = parseTenantDirectory(minimizedDirectoryCsv(rows));
+    expect(round.map((r) => [r.property, r.unit, r.tenant])).toEqual(rows.map((r) => [r.property, r.unit, r.tenant]));
+    const out = await generateAccessBatch(groupSelected(rows, new Set([rows[0]!.id])), D);
+    expect(out[0]!.filename).toBe("Access_1631_S_California_Ave_Unit_2.pdf");
+  });
+  it("never merges or prints records missing a property", async () => {
+    const rows = parseTenantDirectory(MIXED);
+    const g = groupSelected(rows, new Set([rows[2]!.id, rows[3]!.id]));
+    expect(g).toHaveLength(2);
+    await expect(generateAccessBatch(g, D)).rejects.toThrow(/address is missing/);
   });
 });
