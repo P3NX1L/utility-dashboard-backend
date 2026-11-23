@@ -8,7 +8,30 @@ import { useExportUser } from "./ExportSession";
 import { getSupabase } from "@/lib/supabase";
 import { readSharedReport, saveSharedReport, StaffDeniedError } from "@/lib/notices/sharedReports";
 import type { GeneratedNotice } from "@/lib/notices/fiveDayPdf";
-import { ACCESS_REASONS, accessDetailIssues, defaultAccessDetails, generateAccessBatch, groupSelected, municipalityIssue, minimizedDirectoryCsv, parseTenantDirectory, type AccessDetails, type DirectoryRow, type ReasonId } from "@/lib/notices/accessDirectory";
+import { ACCESS_REASONS, accessDateList, accessDetailIssues, defaultAccessDetails, generateAccessBatch, groupSelected, municipalityIssue, minimizedDirectoryCsv, parseTenantDirectory, type AccessDetails, type DirectoryRow, type ReasonId } from "@/lib/notices/accessDirectory";
+
+function AccessEmailDraft({ tenant, address, dates, filename }: { tenant: string; address: string; dates: string; filename: string }) {
+  const [subject, setSubject] = useState(`2-Day Access Notice – ${address}`);
+  const [body, setBody] = useState(`Hello,\n\nWe will be accessing your unit on ${dates}.\n\nPlease find the attached 2-Day Access Notice for more details.\n\nThank you,\nFirst Western Properties`);
+  const [feedback, setFeedback] = useState("");
+  async function copy(value: string, label: string) {
+    try {
+      await navigator.clipboard.writeText(value);
+      setFeedback(`${label} copied.`);
+    } catch {
+      setFeedback("Select the text and copy it manually.");
+    }
+  }
+  return <section aria-label="AppFolio email draft" className="space-y-3 rounded-md border p-4">
+    <h3 className="font-semibold">AppFolio email draft</h3>
+    <p className="text-sm">Open {tenant}’s profile in AppFolio and confirm {address} before sending.</p>
+    <label className="block text-sm">Subject<Input value={subject} onChange={e => setSubject(e.target.value)} /></label>
+    <label className="block text-sm">Message<textarea className="block w-full rounded-md border p-2" rows={8} value={body} onChange={e => setBody(e.target.value)} /></label>
+    <div className="flex gap-2"><Button variant="outline" onClick={() => void copy(subject, "Subject")}>Copy subject</Button><Button variant="outline" onClick={() => void copy(body, "Message")}>Copy message</Button></div>
+    <p role="status" className="text-sm">{feedback}</p>
+    <p className="text-sm">Attach the downloaded PDF in AppFolio: {filename}</p>
+  </section>;
+}
 
 export function AccessNoticeWorkspace() {
   const userId = useExportUser() ?? "";
@@ -107,6 +130,7 @@ function AccountAccessWorkspace({ userId }: { userId: string }) {
         </div>
         {issues.map((i) => <p key={i} className="text-xs text-destructive">{i}</p>)}{error && <p role="alert" className="text-sm text-destructive">{error}</p>}
         <Button className="w-full" disabled={!groups.length || busy} onClick={() => void generate()}>{busy ? "Generating…" : `Generate & Preview ${groups.length} notice${groups.length === 1 ? "" : "s"}`}</Button>
+        {generated?.[0] && groups[0] && <AccessEmailDraft key={revision.current} tenant={groups[0].names.join(" & ")} address={[groups[0].street, groups[0].unit && `Unit ${groups[0].unit}`].filter(Boolean).join(", ")} dates={accessDateList(details.dates)} filename={generated[0].filename} />}
         {generated && <ReviewedExport key={revision.current} notices={generated} tenants={groups.map((g) => g.names.join(" & "))} kind="access" />}
       </section>
     </div>}
