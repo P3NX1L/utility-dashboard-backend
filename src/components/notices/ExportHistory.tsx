@@ -1,3 +1,4 @@
+import { AccessEmailSend } from "./AccessEmailSend";
 import { useEffect, useState } from "react";
 import { Download, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -55,9 +56,9 @@ export function ExportHistory({ kind }: { kind: NoticeKind }) {
     </li>)}</ul>}
     {loading ? <p role="status">Loading exports…</p> : kind === "five-day" || !rows.length ? null : <ul className="divide-y divide-border border-y border-border">{rows.map((row) => <li key={row.id} className="flex flex-wrap items-center justify-between gap-3 py-4">
       <div className="min-w-0 flex-1"><p className="break-words text-sm font-medium">{row.count === 1 ? row.tenants[0] : `${row.count} tenants`}</p><p className="mt-1 text-xs text-muted-foreground"><time dateTime={row.createdAt}>{new Date(row.createdAt).toLocaleString("en-US", { timeZone: "America/Chicago" })}</time> · Chicago</p><p className="mt-1 break-all text-xs">{row.filename}</p>{row.count > 1 && <details className="mt-2 text-xs"><summary className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Tenants</summary><ul className="mt-1 space-y-1">{row.tenants.map((name, i) => <li key={i}>{name}</li>)}</ul></details>}</div>
-      {row.count === 1 && row.accessEmail && <Button variant="outline" size="sm" aria-expanded={emailRow === row.id} onClick={() => setEmailRow(current => current === row.id ? null : row.id)}>Email draft</Button>}
+      {row.count === 1 && row.accessEmail && <Button variant="outline" size="sm" aria-expanded={emailRow === row.id} onClick={() => setEmailRow(current => current === row.id ? null : row.id)}>Email</Button>}
       <Button variant="outline" size="sm" aria-label={`Download ${row.filename}`} onClick={() => { if (row.userId === userId) downloadExport(row); }}><Download className="size-4" />Download</Button>
-      {emailRow === row.id && row.accessEmail && <section aria-label="Access notice email" className="w-full space-y-2 rounded-md border p-3 text-sm"><p>{row.tenants[0]} · {row.accessEmail.address}</p><strong>{row.accessEmail.subject}</strong><p className="whitespace-pre-wrap">{row.accessEmail.body}</p><p>Attachment: {row.filename}</p><a href="https://firstw.appfolio.com/" target="_blank" rel="noopener noreferrer" className="underline">Open AppFolio</a></section>}
+      {emailRow === row.id && row.accessEmail && <section aria-label="Access notice email" className="w-full space-y-2 rounded-md border p-3 text-sm"><p>{row.tenants[0]} · {row.accessEmail.address}</p><strong>{row.accessEmail.subject}</strong><p className="whitespace-pre-wrap">{row.accessEmail.body}</p><p>Attachment: {row.filename}</p><a href="https://firstw.appfolio.com/" target="_blank" rel="noopener noreferrer" className="underline">Open AppFolio</a><AccessEmailSend key={row.id} row={row} /></section>}
     </li>)}</ul>}
   </section>;
 }
