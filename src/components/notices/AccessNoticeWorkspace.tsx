@@ -11,7 +11,7 @@ import type { GeneratedNotice } from "@/lib/notices/fiveDayPdf";
 import { ACCESS_REASONS, accessDateList, accessDetailIssues, defaultAccessDetails, generateAccessBatch, groupSelected, municipalityIssue, minimizedDirectoryCsv, parseTenantDirectory, type AccessDetails, type DirectoryRow, type ReasonId } from "@/lib/notices/accessDirectory";
 
 function AccessEmailDraft({ tenant, address, dates, filename }: { tenant: string; address: string; dates: string; filename: string }) {
-  const [subject, setSubject] = useState(`2-Day Access Notice – ${address}`);
+  const [subject, setSubject] = useState("Access Notice");
   const [body, setBody] = useState(`Hello,\n\nWe will be accessing your unit on ${dates}.\n\nPlease find the attached 2-Day Access Notice for more details.\n\nThank you,\nFirst Western Properties`);
   const [feedback, setFeedback] = useState("");
   async function copy(value: string, label: string) {
