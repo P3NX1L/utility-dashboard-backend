@@ -24,7 +24,7 @@ function AccessEmailDraft({ tenant, address, dates, filename }: { tenant: string
   }
   return <section aria-label="AppFolio email draft" className="space-y-3 rounded-md border p-4">
     <h3 className="font-semibold">AppFolio email draft</h3>
-    <p className="text-sm">Open {tenant}’s profile in AppFolio and confirm {address} before sending.</p>
+    <p className="text-sm"><a className="text-primary underline" href="https://firstw.appfolio.com/" target="_blank" rel="noopener noreferrer">Open AppFolio</a>, find {tenant}’s profile and confirm {address} before sending.</p>
     <label className="block text-sm">Subject<Input value={subject} onChange={e => setSubject(e.target.value)} /></label>
     <label className="block text-sm">Message<textarea className="block w-full rounded-md border p-2" rows={8} value={body} onChange={e => setBody(e.target.value)} /></label>
     <div className="flex gap-2"><Button variant="outline" onClick={() => void copy(subject, "Subject")}>Copy subject</Button><Button variant="outline" onClick={() => void copy(body, "Message")}>Copy message</Button></div>
