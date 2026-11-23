@@ -16,8 +16,8 @@ from starlette.middleware.cors import CORSMiddleware
 from appfolio import ORIGIN, prepare
 
 DESK = "https://1stwesternnotices.xyz"
-SB = os.environ["SUPABASE_URL"]
-KEY = os.environ["SUPABASE_PUBLISHABLE_KEY"]
+SB = os.getenv("SUPABASE_URL", "https://uowhdiufxssggeihiece.supabase.co")
+KEY = os.getenv("SUPABASE_PUBLISHABLE_KEY", "sb_publishable_9hxTRPQ7adRCtGs5eyIvXg_igbiVZvW")
 sessions = {}
 
 
