@@ -1,3 +1,5 @@
+import json
+from cryptography.fernet import Fernet, InvalidToken
 import asyncio
 import base64
 import binascii
@@ -81,12 +83,54 @@ async def login_state(page):
     raise ValueError("AppFolio could not complete sign-in.")
 
 
+async def credentials(request, uid, action, data):
+    key = os.getenv("NOTICE_CREDENTIAL_KEY_V1")
+    if not key:
+        raise HTTPException(503, "AppFolio credential storage is unavailable.")
+    cipher = Fernet(key.encode())
+    headers = {"apikey": KEY, "Authorization": request.headers["authorization"]}
+    url = SB + "/rest/v1/notice_appfolio_credentials"
+    async with httpx.AsyncClient(timeout=10) as client:
+        if action == "save-credentials":
+            email = str(data.get("email", "")).strip()
+            password = data.get("password")
+            if not email or "@" not in email or not isinstance(password, str) or not password or len(password) > 4096:
+                raise HTTPException(400, "Enter your AppFolio email and password.")
+            token = cipher.encrypt(json.dumps([uid, email, password]).encode()).decode()
+            result = await client.post(url, headers={**headers, "Prefer": "resolution=merge-duplicates,return=minimal"},
+                                       json={"user_id": uid, "ciphertext": token})
+            if not result.is_success:
+                raise HTTPException(503, "Could not save AppFolio settings.")
+            return {"email": email}
+        result = await client.get(url, headers=headers, params={"user_id": "eq." + uid, "select": "ciphertext"})
+        if not result.is_success:
+            raise HTTPException(503, "Could not read AppFolio settings.")
+        rows = result.json()
+        if not rows:
+            if action == "credential-status":
+                return {"email": ""}
+            raise HTTPException(409, "Save your AppFolio login in Settings first.")
+        try:
+            owner, email, password = json.loads(cipher.decrypt(rows[0]["ciphertext"].encode()))
+            if owner != uid:
+                raise ValueError()
+        except (InvalidToken, ValueError, TypeError):
+            raise HTTPException(409, "Please save your AppFolio login again in Settings.") from None
+        if action == "credential-status":
+            return {"email": email}
+        return {"email": email, "password": password}
+
+
 @app.post("/{action}")
 async def action(action: str, request: Request):
     uid = await staff(request)
     if int(request.headers.get("content-length", "0")) > 3000000:
         raise HTTPException(413)
     data = await request.json()
+    if action in ("credential-status", "save-credentials"):
+        return await credentials(request, uid, action, data)
+    if action == "login" and "password" not in data:
+        data = await credentials(request, uid, action, data)
     ticket = data.get("ticket", "")
     if action == "login":
         if any(s["user"] == uid for s in sessions.values()) or len(sessions) >= 3:
