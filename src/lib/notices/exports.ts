@@ -92,7 +92,7 @@ export function chicagoGenerationDate(createdAt: string): string {
   return new Intl.DateTimeFormat("en-US", { timeZone: "America/Chicago", month: "2-digit", day: "2-digit", year: "numeric" }).format(new Date(createdAt));
 }
 /** Remove single PDFs; hide only the selected entry in legacy ZIPs, retaining sibling bytes and original tenant indices. */
-export async function deleteFiveDayNotice(userId: string, recordId: string, filename: string): Promise<void> {
+export async function deleteFiveDayNotice(userId: string, recordId: string, filename: string, kind: NoticeKind = "five-day"): Promise<void> {
   if (!userId) throw new Error("A signed-in account is required.");
   const db = await openHistory();
   try { await new Promise<void>((resolve, reject) => {
@@ -101,8 +101,8 @@ export async function deleteFiveDayNotice(userId: string, recordId: string, file
     const request = store.get([userId, recordId]);
     request.onsuccess = () => {
       const record = request.result as ExportRecord | undefined;
-      if (!record || record.userId !== userId || record.kind !== "five-day") { tx.abort(); return; }
-      if (record.filename.toLowerCase().endsWith(".pdf")) {
+      if (!record || record.userId !== userId || record.kind !== kind) { tx.abort(); return; }
+      if (kind === "access" || record.filename.toLowerCase().endsWith(".pdf")) {
         if (record.filename !== filename) { tx.abort(); return; }
         store.delete([userId, recordId]);
       } else {
@@ -113,7 +113,7 @@ export async function deleteFiveDayNotice(userId: string, recordId: string, file
     tx.onerror = tx.onabort = () => reject(new Error("Notice could not be deleted. Please try again."));
   }); } finally { db.close(); }
 }
-export async function markNoticeDownloaded(userId: string, recordId: string, filename: string): Promise<void> {
+export async function markNoticeDownloaded(userId: string, recordId: string, filename: string, kind: NoticeKind = "five-day"): Promise<void> {
   if (!userId) throw new Error("A signed-in account is required.");
   const db = await openHistory();
   try { await new Promise<void>((resolve, reject) => {
@@ -122,7 +122,7 @@ export async function markNoticeDownloaded(userId: string, recordId: string, fil
     const request = store.get([userId, recordId]);
     request.onsuccess = () => {
       const record = request.result as ExportRecord | undefined;
-      if (!record || record.userId !== userId || record.kind !== "five-day") { tx.abort(); return; }
+      if (!record || record.userId !== userId || record.kind !== kind) { tx.abort(); return; }
       store.put({ ...record, downloadedFiles: [...new Set([...(record.downloadedFiles ?? []), filename])] });
     };
     tx.oncomplete = () => resolve();
