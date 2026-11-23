@@ -1,7 +1,6 @@
 import Papa from "papaparse";
-import { PDFDocument, StandardFonts, type PDFFont, type PDFPage } from "pdf-lib";
+import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import { chicagoToday } from "./fiveDay";
-import { formatLongDate } from "./dates";
 import type { GeneratedNotice } from "./fiveDayPdf";
 
 export const DIRECTORY_HEADERS = ["Property", "Unit", "Tenant", "Status", "Tenant Type", "Phone Numbers", "Emails", "Move-in", "Lease To", "Rent", "Deposit", "Tenant Tags"];
@@ -100,45 +99,92 @@ export function formatTime(t: string): string {
   return `${((h + 11) % 12) + 1}:${String(m).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
 }
 
-function wrap(text: string, font: PDFFont, width: number): string[] {
-  const lines: string[] = []; let line = "";
-  for (const word of text.split(/(\s+)/)) {
-    if (line && font.widthOfTextAtSize((line + word).trimEnd(), 12) > width) { lines.push(line.trimEnd()); line = word.trimStart(); }
-    else line += word;
+type Run = { text: string; u?: boolean | undefined };
+const ordinal = (n: number) => { const s = ["TH", "ST", "ND", "RD"], v = n % 100; return `${n}${s[(v - 20) % 10] ?? s[v] ?? s[0]}`; };
+export function accessDate(iso: string): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  const month = new Date(y!, m! - 1, 1).toLocaleDateString("en-US", { month: "long" }).toUpperCase();
+  return `${month} ${ordinal(d!)}, ${y}`;
+}
+export const accessDateList = (dates: string[]) => { const t = dates.map(accessDate); return t.length > 1 ? `${t.slice(0, -1).join(", ")} AND/OR ${t.at(-1)}` : (t[0] ?? ""); };
+const mdy = (iso: string) => { const [y, m, d] = iso.split("-"); return `${m}/${d}/${y}`; };
+const SIZE = 11;
+/** Wraps underline-aware runs into lines; returns lines of merged runs. */
+function wrapRuns(runs: Run[], font: PDFFont, first: number, rest: number): Run[][] {
+  const toks: Run[] = [];
+  for (const r of runs) for (const w of r.text.split(/(\s+)/)) if (w) toks.push({ text: /^\s+$/.test(w) ? " " : w, u: r.u });
+  const lines: Run[][] = []; let line: Run[] = [], width = 0;
+  for (const t of toks) {
+    const max = lines.length ? rest : first;
+    if (t.text === " ") { if (line.length) { line.push(t); width += font.widthOfTextAtSize(" ", SIZE); } continue; }
+    const w = font.widthOfTextAtSize(t.text, SIZE);
+    if (line.length && width + w > max) { while (line.at(-1)?.text === " ") line.pop(); lines.push(line); line = []; width = 0; }
+    line.push(t); width += w;
   }
-  if (line.trim()) lines.push(line.trimEnd());
-  return lines.length ? lines : [""];
+  while (line.at(-1)?.text === " ") line.pop();
+  if (line.length) lines.push(line);
+  return lines.map((l) => l.reduce<Run[]>((acc, t) => { const last = acc.at(-1); if (last && !!last.u === !!t.u) last.text += t.text; else acc.push({ ...t }); return acc; }, []));
+}
+function drawLine(page: PDFPage, font: PDFFont, line: Run[], x: number, top: number) {
+  for (const r of line) {
+    const w = font.widthOfTextAtSize(r.text, SIZE);
+    page.drawText(r.text, { x, y: 792 - top, size: SIZE, font });
+    if (r.u && r.text.trim()) page.drawLine({ start: { x, y: 792 - top - 1.5 }, end: { x: x + w, y: 792 - top - 1.5 }, thickness: 0.6 });
+    x += w;
+  }
 }
 
-/** Office 2 Day access notice sample wording (Chicago, Sec. 5-12-050), reproduced verbatim from the supplied sample; staff review it in the preview. */
+/** Office "2 Day - ACCESS NOTICE" sample (Chicago, Sec. 5-12-050): 11pt Times bold, fixed sample baselines that shift down only when long values wrap. */
 export async function buildAccessPdf(g: UnitGroup, d: AccessDetails): Promise<Uint8Array> {
   const blocked = municipalityIssue(g); if (blocked) throw new Error(blocked);
   const doc = await PDFDocument.create();
   const page: PDFPage = doc.addPage([612, 792]);
-  const regular = await doc.embedFont(StandardFonts.TimesRoman), bold = await doc.embedFont(StandardFonts.TimesRomanBold);
-  let y = 100;
-  const title = "ACCESS NOTICE";
-  page.drawText(title, { x: 306 - bold.widthOfTextAtSize(title, 14) / 2, y: 792 - y, size: 14, font: bold });
-  y += 40;
-  const row = (label: string, values: string[]) => {
-    page.drawText(label, { x: 72, y: 792 - y, size: 12, font: bold });
-    for (const v of values) for (const l of wrap(v, regular, 340)) { page.drawText(l, { x: 200, y: 792 - y, size: 12, font: regular }); y += 15; }
+  const f = await doc.embedFont(StandardFonts.TimesRomanBold);
+  const title = "2 Day - ACCESS NOTICE", tw = f.widthOfTextAtSize(title, SIZE);
+  drawLine(page, f, [{ text: title, u: true }], 306 - tw / 2, 84);
+  let y = 130;
+  const labelled = (label: string, value: string) => {
+    const lw = f.widthOfTextAtSize(label + " ", SIZE);
+    const lines = wrapRuns([{ text: value }], f, 468 - lw, 468 - lw);
+    lines.forEach((l, i) => { if (!i) drawLine(page, f, [{ text: label }], 72, y); drawLine(page, f, l, 72 + lw, y); y += 15; });
     y += 12;
   };
-  row("TO TENANTS:", g.names);
-  row("ADDRESS:", [[g.street, g.unit ? `Unit ${g.unit}` : ""].filter(Boolean).join(", "), g.cityLine].filter(Boolean));
-  const para = (text: string, font: PDFFont = regular) => { for (const l of wrap(text, font, 468)) { page.drawText(l, { x: 72, y: 792 - y, size: 12, font }); y += 15; } y += 12; };
-  const dates = d.dates.map(formatLongDate);
-  const dateText = dates.length > 1 ? `${dates.slice(0, -1).join(", ")} AND ${dates.at(-1)}` : (dates[0] ?? "");
-  para(`THIS IS YOUR LEGAL 2 DAY ACCESS NOTICE PURSUANT TO THE MUNICIPAL CODE OF CHICAGO SEC. 5-12-050, TO INFORM YOU THAT I OR MY AGENT WILL REQUIRE ACCESS TO YOUR PREMISES ON ${dateText} BETWEEN THE HOURS ALLOWED BY LAW (8 AM TO 8 PM) OR BETWEEN ${formatTime(d.start)} AND ${formatTime(d.end)} FOR THE FOLLOWING REASONS:`);
-  para(reasonText(d), bold);
-  para("IF YOU ARE NOT PRESENT, WE WILL USE OUR KEY TO GAIN ACCESS. IF YOU HAVE ADDITIONAL SECURITY ON THE PREMISES AND WILL NOT BE PRESENT, PLEASE REMOVE THE SECURITY TO ALLOW ACCESS. THANK YOU FOR YOUR COOPERATION.");
-  y += 40;
-  page.drawText(`Dated: ${formatLongDate(d.dated)}`, { x: 72, y: 792 - y, size: 12, font: regular });
-  page.drawText("By:", { x: 330, y: 792 - y, size: 12, font: regular });
-  page.drawText(d.agent.trim(), { x: 355, y: 792 - y, size: 12, font: regular });
-  page.drawLine({ start: { x: 352, y: 792 - y - 2 }, end: { x: 540, y: 792 - y - 2 }, thickness: 0.5 });
-  page.drawText("LANDLORD/AGENT", { x: 355, y: 792 - y - 16, size: 12, font: bold });
+  labelled("TO TENANTS:", g.names.join(", "));
+  labelled("ADDRESS:", [[g.street, g.unit ? `UNIT ${g.unit}` : ""].filter(Boolean).join(", "), g.cityLine].filter(Boolean).join(", "));
+  let shift = Math.max(0, y - 186); // later blocks move down only if the header wrapped
+  const body = wrapRuns([
+    { text: "THIS IS YOUR LEGAL 2 DAY ACCESS NOTICE PURSUANT TO THE MUNICIPAL CODE OF CHICAGO SEC. 5-12-050, TO INFORM YOU THAT I OR MY AGENT WILL REQUIRE ACCESS TO YOUR PREMISES ON " },
+    { text: accessDateList(d.dates), u: true }, { text: " BETWEEN THE HOURS ALLOWED BY LAW (8 AM TO 8 PM) OR BETWEEN " },
+    { text: formatTime(d.start), u: true }, { text: " AND " }, { text: formatTime(d.end), u: true }, { text: " FOR THE FOLLOWING REASONS:" },
+  ], f, 468, 468);
+  const BODY = [211, 237, 262, 288, 313];
+  body.forEach((l, i) => drawLine(page, f, l, 72, (BODY[i] ?? 313 + (i - 4) * 25.5) + shift));
+  shift += Math.max(0, body.length - 5) * 25.5;
+  const detail = d.detail.trim();
+  const options: [ReasonId, string, boolean][] = [["routine", "ROUTINE INSPECTION TO ASSESS COMPLIANCE WITH LEASE OR LAW", false], ["repair", "INSPECT AND, IF NECESSARY, REPAIR OR REPLACE:", true], ["estimate", "INSPECT AND GET ESTIMATE FOR:", true], ["show", "TO SHOW PREMISES TO APPLICANT/BUYER:", true], ["other", "OTHER:", true]];
+  options.forEach(([id, label, blank], i) => {
+    const top = 340 + i * 27 + shift, on = d.reason === id;
+    page.drawRectangle({ x: 72, y: 792 - top - 1, width: 9, height: 9, borderWidth: 0.8, borderColor: rgb(0, 0, 0) });
+    if (on) { page.drawLine({ start: { x: 73.5, y: 792 - top + 0.5 }, end: { x: 79.5, y: 792 - top + 6.5 }, thickness: 1 }); page.drawLine({ start: { x: 73.5, y: 792 - top + 6.5 }, end: { x: 79.5, y: 792 - top + 0.5 }, thickness: 1 }); }
+    const lw = f.widthOfTextAtSize(label + " ", SIZE);
+    drawLine(page, f, [{ text: label }], 90, top);
+    if (!blank) return;
+    const value = on ? detail : "";
+    const lines = value ? wrapRuns([{ text: value.toUpperCase() }], f, 450 - lw, 450) : [];
+    if (!lines.length) { page.drawLine({ start: { x: 90 + lw, y: 792 - top - 1.5 }, end: { x: 540, y: 792 - top - 1.5 }, thickness: 0.6 }); return; }
+    lines.forEach((l, j) => drawLine(page, f, l.map((r) => ({ ...r, u: true })), j ? 90 : 90 + lw, top + j * 15));
+    shift += (lines.length - 1) * 15;
+  });
+  const key = wrapRuns([{ text: "IF YOU ARE NOT PRESENT, WE WILL USE OUR KEY TO GAIN ACCESS. IF YOU HAVE ADDITIONAL SECURITY ON THE PREMISES AND WILL NOT BE PRESENT, PLEASE REMOVE THE SECURITY TO ALLOW ACCESS. THANK YOU FOR YOUR COOPERATION." }], f, 468, 450);
+  key.forEach((l, i) => drawLine(page, f, l, i ? 90 : 72, 473 + i * 25 + shift));
+  const sig = Math.max(650, 473 + key.length * 25 + shift + 50);
+  drawLine(page, f, [{ text: `DATED: ${mdy(d.dated)}` }], 72, sig);
+  const agent = wrapRuns([{ text: d.agent.trim() }], f, 180, 180);
+  drawLine(page, f, [{ text: "By:" }], 330, sig);
+  agent.forEach((l, i) => drawLine(page, f, l, 355, sig + i * 14));
+  const lineY = sig + (agent.length - 1) * 14 + 2;
+  page.drawLine({ start: { x: 352, y: 792 - lineY }, end: { x: 540, y: 792 - lineY }, thickness: 0.6 });
+  drawLine(page, f, [{ text: "LANDLORD/AGENT" }], 355, lineY + 14);
   return doc.save();
 }
 
