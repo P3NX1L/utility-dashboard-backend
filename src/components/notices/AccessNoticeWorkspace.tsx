@@ -5,8 +5,10 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ReviewedExport } from "./ReviewedExport";
 import { useExportUser } from "./ExportSession";
+import { getSupabase } from "@/lib/supabase";
+import { readSharedReport, saveSharedReport, StaffDeniedError } from "@/lib/notices/sharedReports";
 import type { GeneratedNotice } from "@/lib/notices/fiveDayPdf";
-import { ACCESS_REASONS, accessDetailIssues, defaultAccessDetails, generateAccessBatch, groupSelected, municipalityIssue, parseTenantDirectory, readDirectory, saveDirectory, type AccessDetails, type DirectoryRow, type ReasonId } from "@/lib/notices/accessDirectory";
+import { ACCESS_REASONS, accessDetailIssues, defaultAccessDetails, generateAccessBatch, groupSelected, municipalityIssue, minimizedDirectoryCsv, parseTenantDirectory, type AccessDetails, type DirectoryRow, type ReasonId } from "@/lib/notices/accessDirectory";
 
 export function AccessNoticeWorkspace() {
   const userId = useExportUser() ?? "";
@@ -19,10 +21,14 @@ function AccountAccessWorkspace({ userId }: { userId: string }) {
   const [details, setDetails] = useState<AccessDetails>(defaultAccessDetails);
   const [generated, setGenerated] = useState<GeneratedNotice[] | null>(null);
   const [busy, setBusy] = useState(false), [error, setError] = useState(""), [uploadError, setUploadError] = useState("");
+  const [denied, setDenied] = useState(false), shared = useRef<string | null>(null), uploaded = useRef(false);
   const revision = useRef(0), input = useRef<HTMLInputElement>(null), pending = useRef<AbortController | null>(null);
   useEffect(() => {
     const ctl = new AbortController();
-    readDirectory(userId).then((s) => { if (s && !ctl.signal.aborted) { setRows(s.rows); setFileName(s.filename); } }).catch(() => {});
+    readSharedReport(getSupabase(), "tenant_directory").then((s) => {
+      if (!s || ctl.signal.aborted || uploaded.current) return;
+      shared.current = s.revision; setRows(parseTenantDirectory(s.csv)); setFileName(s.filename);
+    }).catch((e: unknown) => { if (ctl.signal.aborted) return; if (e instanceof StaffDeniedError) setDenied(true); setUploadError(e instanceof Error ? e.message : "The shared tenant directory could not be loaded."); });
     return () => { ctl.abort(); pending.current?.abort(); };
   }, [userId]);
   const invalidate = () => { revision.current++; setGenerated(null); setError(""); };
@@ -35,10 +41,11 @@ function AccountAccessWorkspace({ userId }: { userId: string }) {
       if (file.size > 10 * 1024 * 1024) throw new Error("The CSV exceeds 10 MB.");
       const parsed = parseTenantDirectory(await file.text());
       const ctl = new AbortController(); pending.current = ctl;
-      await saveDirectory({ userId, filename: file.name, rows: parsed }, ctl.signal);
+      const next = await saveSharedReport(getSupabase(), "tenant_directory", file.name, minimizedDirectoryCsv(parsed), shared.current);
       if (ctl.signal.aborted) return;
+      shared.current = next; uploaded.current = true;
       invalidate(); setRows(parsed); setFileName(file.name); setSelected(new Set()); setSearch("");
-    } catch (e) { setUploadError(`${e instanceof Error ? e.message : "Upload failed."} Your previous directory is unchanged.`); }
+    } catch (e) { if (e instanceof StaffDeniedError) setDenied(true); setUploadError(`${e instanceof Error ? e.message : "Upload failed."} Your previous directory is unchanged.`); }
     finally { setBusy(false); if (input.current) input.current.value = ""; }
   };
   const q = search.trim().toLowerCase();
@@ -54,6 +61,7 @@ function AccountAccessWorkspace({ userId }: { userId: string }) {
     finally { setBusy(false); }
   };
   const picker = <input ref={input} type="file" accept=".csv,text/csv" className="sr-only" tabIndex={-1} aria-hidden="true" onChange={(e) => void upload(e.target.files?.[0])} />;
+  if (denied) return <div className="space-y-6"><h1 className="text-3xl font-semibold">Access Notices</h1><p role="alert" className="text-sm text-destructive">Your account is not on the notice desk staff list. Ask an administrator for access.</p></div>;
   return <div className="space-y-6">
     <h1 className="text-3xl font-semibold">Access Notices</h1>
     {picker}

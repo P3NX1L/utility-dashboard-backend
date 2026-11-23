@@ -10,7 +10,7 @@ import { buildSingleRentNotice, type GeneratedBatch } from "@/lib/notices/fiveDa
 import { ReviewedExport } from "./ReviewedExport";
 import { getSupabase } from "@/lib/supabase";
 import { readLegalOwnerDirectory } from "@/lib/notices/legalOwnerMapping";
-import { readReportSource, saveReportSource } from "@/lib/notices/reportSource";
+import { readSharedReport, saveSharedReport, StaffDeniedError } from "@/lib/notices/sharedReports";
 import { useExportUser } from "./ExportSession";
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
@@ -44,6 +44,8 @@ function AccountRentWorkspace({ userId }: { userId: string | null }) {
   const [restoring, setRestoring] = useState(false);
   const uploadAbort = useRef<AbortController | null>(null);
   const restoreCancelled = useRef(false);
+  const sharedRevision = useRef<string | null>(null);
+  const [denied, setDenied] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const uploadLock = useRef(false);
   const dragDepth = useRef(0);
@@ -57,12 +59,14 @@ function AccountRentWorkspace({ userId }: { userId: string | null }) {
     restoreCancelled.current = false;
     if (userId) {
       setRestoring(true);
-      void readReportSource(userId).then(async (source) => {
+      void readSharedReport(getSupabase(), "delinquency").then(async (source) => {
         if (!source || !active || restoreCancelled.current) return;
+        sharedRevision.current = source.revision;
         const parsed = await parseCurrentReport(source.csv);
         if (!active || restoreCancelled.current) return;
         setBatch(parsed); setFileName(source.filename);
       }).catch((e: unknown) => {
+        if (active && e instanceof StaffDeniedError) setDenied(true);
         if (active && !restoreCancelled.current) setUploadError(e instanceof Error ? e.message : "Your saved report could not be restored.");
       }).finally(() => { if (active) setRestoring(false); });
     }
@@ -102,11 +106,12 @@ function AccountRentWorkspace({ userId }: { userId: string | null }) {
       const csv = await file.text();
       const parsed = await parseCurrentReport(csv);
       if (version !== uploadVersion.current) return;
-      if (userId) await saveReportSource(userId, file.name, csv, controller.signal);
-      if (version !== uploadVersion.current) return;
+      const nextRevision = await saveSharedReport(getSupabase(), "delinquency", file.name, csv, sharedRevision.current);
+      if (version !== uploadVersion.current || controller.signal.aborted) return;
+      sharedRevision.current = nextRevision;
       restoreCancelled.current = true;
       invalidate(); setBatch(parsed); setFileName(file.name); setActiveId(""); setSearch(""); setIssueDate(chicagoToday());
-    } catch (e) { if (version === uploadVersion.current) setUploadError(e instanceof Error ? e.message : "Unable to read CSV."); }
+    } catch (e) { if (version === uploadVersion.current && e instanceof StaffDeniedError) setDenied(true); if (version === uploadVersion.current) setUploadError(e instanceof Error ? e.message : "Unable to read CSV."); }
     finally { uploadLock.current = false; if (version === uploadVersion.current) setUploading(false); }
   };
   const selected = batch.tenants.filter((t) => t.selected);
@@ -150,6 +155,7 @@ function AccountRentWorkspace({ userId }: { userId: string | null }) {
           : `${detail} Review the fields above, then try again.`);
     } finally { generationLock.current = false; setBusy(false); }
   };
+  if (denied) return <p role="alert" className="mt-6 text-sm text-destructive">Your account is not on the notice desk staff list. Ask an administrator for access.</p>;
   return <div className="mt-6 space-y-6">
     {restoring && <p role="status" className="text-sm text-muted-foreground">Restoring saved report…</p>}
     {!fileName && <div className="space-y-3">

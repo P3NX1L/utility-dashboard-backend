@@ -152,35 +152,7 @@ export async function generateAccessBatch(groups: UnitGroup[], d: AccessDetails)
 }
 export const defaultAccessDetails = (): AccessDetails => ({ dates: [], start: "", end: "", reason: "", detail: "", agent: "Aahil Penwalla", dated: chicagoToday() });
 
-// Per-account browser retention (separate store; only the retained columns are saved).
-export interface DirectorySource { userId: string; filename: string; rows: DirectoryRow[] }
-function openDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const r = indexedDB.open("first-western-tenant-directory", 1);
-    r.onupgradeneeded = () => r.result.createObjectStore("directories", { keyPath: "userId" });
-    r.onsuccess = () => resolve(r.result);
-    r.onerror = () => reject(new Error("Browser storage is unavailable. Your previous directory has not been replaced."));
-  });
-}
-export async function readDirectory(userId: string): Promise<DirectorySource | null> {
-  if (!userId) return null;
-  const db = await openDb();
-  try { return await new Promise((resolve, reject) => {
-    const q = db.transaction("directories").objectStore("directories").get(userId);
-    q.onsuccess = () => { const s = q.result as DirectorySource | undefined; resolve(s?.userId === userId ? s : null); };
-    q.onerror = () => reject(new Error("Your saved tenant directory could not be restored."));
-  }); } finally { db.close(); }
-}
-export async function saveDirectory(source: DirectorySource, signal: AbortSignal): Promise<void> {
-  if (!source.userId) throw new Error("A signed-in account is required.");
-  const db = await openDb();
-  try { await new Promise<void>((resolve, reject) => {
-    if (signal.aborted) { reject(new Error("cancelled")); return; }
-    const tx = db.transaction("directories", "readwrite");
-    signal.addEventListener("abort", () => { try { tx.abort(); } catch { /* done */ } }, { once: true });
-    tx.oncomplete = () => resolve();
-    tx.onerror = tx.onabort = () => reject(new Error("save failed"));
-    tx.objectStore("directories").put(source);
-  }); } catch { throw new Error("Tenant directory could not be saved. Your previous directory has not been replaced."); }
-  finally { db.close(); }
+/** Minimized CSV for shared storage: exact directory header, but contact, lease and money columns left blank. */
+export function minimizedDirectoryCsv(rows: DirectoryRow[]): string {
+  return Papa.unparse({ fields: DIRECTORY_HEADERS, data: rows.map((r) => [r.property, r.unit, r.tenant, r.status, r.role, "", "", "", "", "", "", ""]) });
 }
