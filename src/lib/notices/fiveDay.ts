@@ -1,6 +1,18 @@
 import Papa from "papaparse";
 import { parseAmount } from "./numberToWords";
 
+/** AppFolio exports personal names as "Last, First Middle". */
+export function noticeTenantName(value: string): string {
+  const name = value.trim();
+  const parts = name.split(",").map((part) => part.trim());
+  if (parts.length !== 2 || !parts[0] || !parts[1]) return name;
+  if (/\b(?:llc|inc|corp|ltd|trust|llp)\b/i.test(name) || /^(?:jr|sr|ii|iii|iv)\.?$/i.test(parts[1])) return name;
+  const given = parts[1].split(/\s+/).map((word, index) =>
+    index > 0 && /^\p{L}$/u.test(word) ? word + "." : word
+  );
+  return [...given, parts[0]].join(" ");
+}
+
 export interface PropertyGroup { id: string; label: string; street: string; city: string; zip: string; owner: string; agent: string }
 export interface RentTenant {
   id: string; propertyId: string; sourceRow: number; name: string; unit: string;
@@ -34,7 +46,7 @@ export function parseAppFolioCsv(text: string): RentBatch {
   let property: PropertyGroup | undefined;
   result.data.slice(headerRow + 1).forEach((row, offset) => {
     const get = (i: number) => row[indices[i] ?? -1]?.trim() ?? "";
-    const unit = get(0), name = get(1);
+    const unit = get(0), name = noticeTenantName(get(1));
     if (unit.startsWith("->")) {
       property = parseProperty(unit, `property-${properties.length + 1}`);
       properties.push(property);
