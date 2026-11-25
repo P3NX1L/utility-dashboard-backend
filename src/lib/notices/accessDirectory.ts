@@ -1,6 +1,6 @@
 import Papa from "papaparse";
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
-import { chicagoToday } from "./fiveDay";
+import { chicagoToday, noticeTenantName } from "./fiveDay";
 import type { GeneratedNotice } from "./fiveDayPdf";
 
 export const DIRECTORY_HEADERS = ["Property", "Unit", "Tenant", "Status", "Tenant Type", "Phone Numbers", "Emails", "Move-in", "Lease To", "Rent", "Deposit", "Tenant Tags"];
@@ -22,7 +22,7 @@ export function parseTenantDirectory(text: string): DirectoryRow[] {
   const get = (r: string[], i: number) => (i < 0 ? "" : (r[i] ?? "").trim());
   const out: DirectoryRow[] = [];
   rows.forEach((r, i) => {
-    const tenant = get(r, it);
+    const tenant = noticeTenantName(get(r, it));
     if (!tenant) return; // blank spacer and trailing total rows carry no tenant
     out.push({ id: `t${i}`, property: get(r, ip), unit: get(r, iu), tenant, status: get(r, is), role: get(r, ir) });
   });
